@@ -1,16 +1,16 @@
 import os
 #from traits.etsconfig.api import ETSConfig
 #ETSConfig.toolkit = 'qt4'
-from enable.api import ComponentEditor
-from traits.api import Str, Bool, List, Dict, HasTraits, Instance, Callable, Button, \
-    HTML, Enum, This, on_trait_change
-from traitsui.api import View, Group, HGroup, VGroup, HSplit, VSplit, HFlow, \
-    Item, UItem, Label, InstanceEditor, TreeEditor, TreeNode, spring, Handler, \
-    CheckListEditor
+from enable.api import Component, ComponentEditor
+from traits.api import Str, Bool, Enum, List, HasTraits, Instance, Button, \
+    HTML, on_trait_change
+from traitsui.api import View, Group, HGroup, VGroup, HSplit, \
+    Item, UItem, TreeEditor, TreeNode
 from pyface.api import ImageResource
-from traitsui.menu import Action
 from fixes import fix_background_color
-from chaco.api import OverlayPlotContainer, Plot, ArrayPlotData
+from chaco.api import OverlayPlotContainer, Plot, ArrayPlotData, \
+    add_default_axes, add_default_grids, create_line_plot, Legend
+from chaco.tools.api import PanTool, ZoomTool, DragZoom, LegendTool
 from ui_helpers import get_file_from_dialog
 import specs
 
@@ -62,12 +62,6 @@ class SpecsFile(HasTraits):
         return self
 
 
-class InstanceUItem(UItem):
-    """Convenience class for including an Instance in a View"""
-    style = Str('custom')
-    editor = Instance(InstanceEditor,())
-
-
 class TreePanel(HasTraits):
     specs_file = Instance(SpecsFile)
     file_path = Str(None)
@@ -77,6 +71,7 @@ class TreePanel(HasTraits):
 
     # Button group above tree area
     bt_open_file = Button("Open file...")
+    bt_export_file = Button("Export...")
 
     def _bt_open_file_changed(self):
         file_path = get_file_from_dialog()
@@ -90,6 +85,16 @@ class TreePanel(HasTraits):
         """
         self.name = self.file_path
         self.specs_file = SpecsFile().open(self.file_path)
+
+    def bt_export_file_changed(self):
+#        file_path = get_file_from_dialog()
+#        if file_path is not None:
+#            self.most_recent_path = os.path.dirname(file_path)
+#            self.file_path = file_path
+#        dlg = FileDialog(title='Choose file', action='save', wildcard=txt_wildcard)
+#        if dlg.open() == OK:
+#            return dlg.paths[0]
+        pass
 
     def _has_data(self):
         return self.file_path is not None
@@ -163,6 +168,7 @@ class TreePanel(HasTraits):
     # The tree view
     traits_view =   View(
                         UItem('bt_open_file'),
+                        UItem('bt_export_file', enabled_when='object._has_data()'),
                         UItem(
                             name = 'specs_file',
                             editor = tree_editor,
@@ -170,8 +176,85 @@ class TreePanel(HasTraits):
                     )
 
 
+class OverlappingPlotContainer(OverlayPlotContainer):
+    plots = {}    # container for all current plot instances
+
+    def __init__(self, **traits):
+        super(OverlappingPlotContainer, self).__init__(**traits)   # OverlayPlotContainer.__init__(self, **traits)
+        self.first = True
+
+    def add_plot(self, name, xs, ys, **lineplot_args):
+        plot = create_line_plot((xs, ys), bgcolor='transparent', **lineplot_args)
+#TODO: if we remove the first instance via remove() the mapper and tools are also removed
+#      so I may have to add a transparent 1st plot series that never gets removed
+
+        if self.first:
+            self.value_mapper, self.index_mapper, self.legend = self._setup_plot_tools(plot)
+            self.first = False
+        self._setup_mapper(plot, self.value_mapper, self.index_mapper)
+
+        self.add(plot)
+        self.plots[name] = plot
+        self.legend.plots = self.plots
+        self.request_redraw()
+
+    def remove_plot(self, name):
+        self.components.remove(self.plots[name])
+        del self.plots[name]
+        self.request_redraw()
+
+    def _setup_plot_tools(self, plot):
+        """Sets up the background, and several tools on a plot"""
+        # Make a white background with grids and axes
+#        plot.bgcolor = 'white'
+        plot.bgcolor='transparent'
+        add_default_grids(plot)
+        add_default_axes(plot)
+
+        # Allow white space around plot
+        plot.index_range.tight_bounds = False
+        plot.index_range.refresh()
+        plot.value_range.tight_bounds = False
+        plot.value_range.refresh()
+
+        # The PanTool allows panning around the plot
+        plot.tools.append(PanTool(plot))
+
+        # The ZoomTool tool is stateful and allows drawing a zoom
+        # box to select a zoom region.
+        zoom = ZoomTool(plot, tool_mode="box", always_on=False)
+        plot.overlays.append(zoom)
+
+        # Add a legend in the upper right corner, and make it relocatable
+        legend = Legend(component=plot, padding=10, align="ur")
+        legend.tools.append(LegendTool(legend, drag_button="right"))
+        plot.overlays.append(legend)
+
+        return plot.value_mapper, plot.index_mapper, legend
+
+    def _setup_mapper(self, plot, value_mapper, index_mapper):
+        """Sets up a mapper for given plot"""
+        plot.value_mapper = value_mapper
+        value_mapper.range.add(plot.value)
+        plot.index_mapper = index_mapper
+        index_mapper.range.add(plot.index)
+
+
 class PlotPanel(HasTraits):
-    plot = Instance(OverlayPlotContainer)
+    '''
+    Based largely on the Chaco Overlapping plots demo
+    '''
+    plot = Instance(Component)
+
+    def _plot_default(self):
+        return OverlappingPlotContainer(padding=50, fill_padding=True,
+                                     bgcolor="white", use_backbuffer=True)
+
+    def add_plot(self, *args, **kwargs):
+        self.plot.add_plot(*args, **kwargs)
+
+    def remove_plot(self, *args, **kwargs):
+        self.plot.remove_plot(*args, **kwargs)
 
     traits_view =   View(
                         UItem(
@@ -179,6 +262,7 @@ class PlotPanel(HasTraits):
                             editor=ComponentEditor(),
                             show_label=False
                         ),
+                        resizable=True,
                     )
 
 
@@ -191,9 +275,6 @@ class SelectorPanel(HasTraits):
     I'll just reflect the state of the region object's traits in the checkboxes here.
     '''
     name = Str('<unknown>')
-    selected_channel_counts = List
-    selected_extended_channels = List
-    all_selected_channels = List
     region = Instance(SPECSRegion)
 
     '''
@@ -210,33 +291,100 @@ class SelectorPanel(HasTraits):
         self.region = region
 
         # create global counts indicator
-        self.add_trait('channel_counts', Bool)
+        self.add_trait('counts', Bool)
 
         # create channel indicators
         channel_counts_len = region.region.channel_counts.shape[1]
-        self.selected_channel_counts = range(channel_counts_len)
         for i in range(channel_counts_len):
             self.add_trait('channel_counts_{}'.format(i+1), Bool)
         # use self._instance_traits() to list these traits
 
         # create extended channel indicators
         extended_channels_len = region.region.extended_channels.shape[1]
-        self.selected_extended_channels = range(extended_channels_len)
         for i in range(extended_channels_len):
             self.add_trait('extended_channels_{}'.format(i+1), Bool)
 
-        self.all_selected_channels = self._instance_traits().values()
-
-    def _channel_counts_changed(self, trait, old, new):
+    def _counts_changed(self, trait, old, new):
         print self.region.name, trait, old, new
+        if new:
+            self._add_plot(self.region.name, trait)
+        else:
+            self._remove_plot(self.region.name, trait)
 
-    @on_trait_change( 'channel_counts_+' )
+    @on_trait_change('channel_counts_+')
     def _channel_counts_x_changed(self, container, trait, new):
         print self.region.name, container, trait, new
+        if new:
+            self._add_plot(self.region.name, trait, self._get_name_num(trait))
+        else:
+            self._remove_plot(self.region.name, trait, self._get_name_num(trait))
 
-    @on_trait_change( 'extended_channels_+' )
+    @on_trait_change('extended_channels_+')
     def _extended_channels_changed(self, container, trait, new):
         print self.region.name, container, trait, new
+        if new:
+            self._add_plot(self.region.name, trait, self._get_name_num(trait))
+        else:
+            self._remove_plot(self.region.name, trait, self._get_name_num(trait))
+
+    def _name_plot(self, region_name, series_name):
+        ''' Make a unique name based on the region_name and series_name parts
+        which together are assumed to form a unique pair
+        '''
+        return '{}_{}'.format(region_name, series_name)
+
+    def _get_name_body(self, series_name):
+        ''' Get first part of name.
+        '''
+        return '_'.join(series_name.split('_')[:2])
+
+    def _get_name_num(self, series_name):
+        ''' Get last part of name.
+        '''
+        return int(series_name.split('_')[-1])
+
+#    def _get_y_axis(self, region, index=None, extended=False):
+#        r = region.region
+#        if index is not None:
+#            if extended:
+#            else:
+    def _get_x_axis(self, region):
+        r = region.region
+        if r.scan_mode == 'FixedAnalyzerTransmission':
+            xs = r.binding_axis
+        elif r.scan_mode == 'ConstantFinalState':
+            xs = r.excitation_axis
+        else:
+            xs = r.kinetic_axis
+        return xs
+
+    def _add_plot(self, region_name, series_name, column=None):
+        ''' Call plot widget to create it. '''
+        name = self._name_plot(region_name, series_name)
+        xs = self._get_x_axis(self.region)
+        if series_name == 'counts':
+            ys = self.region.region.__getattribute__(series_name)
+        else:
+            # Get 'first_second' part of the name 'first_second_n' which will either be
+            # 'channel_counts' or 'extended_channels'. Then use this to retrieve the
+            # matching array from the specs.SPECSRegion object.
+            series_name = self._get_name_body(series_name)
+            ys = self.region.region.__getattribute__(series_name)[:,column-1]
+
+        line_attributes = { \
+            'counts'            : {'color':'black', 'width':2.0},
+            'channel_counts'    : {'color':'gray' , 'width':1.5},
+            'extended_channels' : {'color':'green', 'width':1.5},
+            }[series_name]
+        plot_panel.add_plot(name, xs, ys, **line_attributes)
+
+    def _remove_plot(self, region_name, series_name):
+        '''
+        Check whether it exists and if so call plot widget to remove it and
+        delete the reference here.
+        '''
+        name = self._name_plot(region_name, series_name)
+        plot_panel.remove_plot(name)
 
     def default_traits_view(self):
         '''
@@ -248,10 +396,10 @@ class SelectorPanel(HasTraits):
         trait_dict = self._instance_traits()
 #        items = [Item(name) for name in sorted(trait_dict) if name is not 'trait_added']
         items = []
-        if 'channel_counts' in trait_dict:
+        if 'counts' in trait_dict:
             group1 = HGroup()
             group1.content = []
-            group1.content.extend([Item('channel_counts', label='Counts')])
+            group1.content.extend([Item('counts', label='Counts')])
             # channel_counts_x group
             group = HGroup()
             group.content = [Item(name, label=name.split('_')[-1]) for name in sorted(trait_dict) if 'channel_counts_' in name]
