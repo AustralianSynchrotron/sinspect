@@ -79,7 +79,7 @@ seterr(divide='raise')
 ################################################################################
 
 
-class SPECS:
+class SPECS(object):
     """ Represent a SPECSLab .xml output as a python object. Construct with:
 
         specs_obj = specs.SPECS(my_xml_file)
@@ -106,7 +106,7 @@ class SPECS:
                 self.groups.append(SPECSGroup(group))
 
 
-class SPECSGroup:
+class SPECSGroup(object):
     """ Encapsulates a "RegionGroup" struct from the SPECS XML format. """
 
     def __init__(self, xmlgroup):
@@ -122,7 +122,7 @@ class SPECSGroup:
                 self.regions.append(SPECSRegion(region))
 
 
-class SPECSRegion:
+class SPECSRegion(object):
     """ Encapsulates a "RegionData" struct from the SPECS XML format. """
 
     def __init__(self, xmlregion):
