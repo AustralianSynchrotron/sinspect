@@ -1,6 +1,7 @@
 import os
 #from traits.etsconfig.api import ETSConfig
 #ETSConfig.toolkit = 'qt4'
+import numpy as np
 from enable.api import Component, ComponentEditor
 from traits.api import Str, Bool, Enum, List, HasTraits, Instance, Button, \
     HTML, on_trait_change
@@ -176,32 +177,42 @@ class TreePanel(HasTraits):
                     )
 
 
-class OverlappingPlotContainer(OverlayPlotContainer):
-    plots = {}    # container for all current plot instances
+class PlotPanel(HasTraits):
+    '''
+    Based largely on the Chaco Overlapping plots demo
+    '''
+    plot_data = Instance(ArrayPlotData)
+    plot = Instance(Plot)
 
     def __init__(self, **traits):
-        super(OverlappingPlotContainer, self).__init__(**traits)   # OverlayPlotContainer.__init__(self, **traits)
+        super(PlotPanel, self).__init__(**traits)   # PlotPanel.__init__(self, **traits)
+        self.plot_data = ArrayPlotData()
+        self.plot = Plot(self.plot_data)
+        self.plot.value_range.low = 0               # fix y-axis min to 0
         self.first = True
 
     def add_plot(self, name, xs, ys, **lineplot_args):
-        plot = create_line_plot((xs, ys), bgcolor='transparent', **lineplot_args)
+        data = np.vstack((xs,ys)).T
+#        self.plot_data.set_data(name, data)
+        self.plot_data.set_data(name, ys)
+#        self.plot.plot(('index', name), name=name, type='line')
+        self.plot.plot(name, name=name, type='line', **lineplot_args)
+
 #TODO: if we remove the first instance via remove() the mapper and tools are also removed
 #      so I may have to add a transparent 1st plot series that never gets removed
 
-        if self.first:
-            self.value_mapper, self.index_mapper, self.legend = self._setup_plot_tools(plot)
-            self.first = False
-        self._setup_mapper(plot, self.value_mapper, self.index_mapper)
+#        if self.first:
+#            self.value_mapper, self.index_mapper, self.legend = self._setup_plot_tools(plot)
+#            self.first = False
+#        self._setup_mapper(plot, self.value_mapper, self.index_mapper)
 
-        self.add(plot)
-        self.plots[name] = plot
-        self.legend.plots = self.plots
-        self.request_redraw()
+#        self.legend.plots = self.plots
+        self.plot.request_redraw()
 
     def remove_plot(self, name):
-        self.components.remove(self.plots[name])
-        del self.plots[name]
-        self.request_redraw()
+        self.plot_data.del_data(name)
+        self.plot.delplot(name)
+        self.plot.request_redraw()
 
     def _setup_plot_tools(self, plot):
         """Sets up the background, and several tools on a plot"""
@@ -239,22 +250,9 @@ class OverlappingPlotContainer(OverlayPlotContainer):
         plot.index_mapper = index_mapper
         index_mapper.range.add(plot.index)
 
-
-class PlotPanel(HasTraits):
-    '''
-    Based largely on the Chaco Overlapping plots demo
-    '''
-    plot = Instance(Component)
-
     def _plot_default(self):
-        return OverlappingPlotContainer(padding=50, fill_padding=True,
+        return PlotPanel(padding=50, fill_padding=True,
                                      bgcolor="white", use_backbuffer=True)
-
-    def add_plot(self, *args, **kwargs):
-        self.plot.add_plot(*args, **kwargs)
-
-    def remove_plot(self, *args, **kwargs):
-        self.plot.remove_plot(*args, **kwargs)
 
     traits_view =   View(
                         UItem(
@@ -305,7 +303,7 @@ class SelectorPanel(HasTraits):
             self.add_trait('extended_channels_{}'.format(i+1), Bool)
 
     def _counts_changed(self, trait, old, new):
-        print self.region.name, trait, old, new
+#        print self.region.name, trait, old, new
         if new:
             self._add_plot(self.region.name, trait)
         else:
@@ -313,19 +311,19 @@ class SelectorPanel(HasTraits):
 
     @on_trait_change('channel_counts_+')
     def _channel_counts_x_changed(self, container, trait, new):
-        print self.region.name, container, trait, new
+#        print self.region.name, container, trait, new
         if new:
             self._add_plot(self.region.name, trait, self._get_name_num(trait))
         else:
-            self._remove_plot(self.region.name, trait, self._get_name_num(trait))
+            self._remove_plot(self.region.name, trait)
 
     @on_trait_change('extended_channels_+')
     def _extended_channels_changed(self, container, trait, new):
-        print self.region.name, container, trait, new
+#        print self.region.name, container, trait, new
         if new:
             self._add_plot(self.region.name, trait, self._get_name_num(trait))
         else:
-            self._remove_plot(self.region.name, trait, self._get_name_num(trait))
+            self._remove_plot(self.region.name, trait)
 
     def _name_plot(self, region_name, series_name):
         ''' Make a unique name based on the region_name and series_name parts
@@ -373,15 +371,14 @@ class SelectorPanel(HasTraits):
 
         line_attributes = { \
             'counts'            : {'color':'black', 'width':2.0},
-            'channel_counts'    : {'color':'gray' , 'width':1.5},
-            'extended_channels' : {'color':'green', 'width':1.5},
+            'channel_counts'    : {'color':'blue' , 'width':1.5},
+            'extended_channels' : {'color':'red', 'width':1.5},
             }[series_name]
         plot_panel.add_plot(name, xs, ys, **line_attributes)
 
     def _remove_plot(self, region_name, series_name):
         '''
-        Check whether it exists and if so call plot widget to remove it and
-        delete the reference here.
+        Call plot widget to remove it and delete the reference here.
         '''
         name = self._name_plot(region_name, series_name)
         plot_panel.remove_plot(name)
