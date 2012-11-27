@@ -10,7 +10,7 @@ from traitsui.api import View, Group, HGroup, VGroup, HSplit, \
 from pyface.api import ImageResource
 from fixes import fix_background_color
 from chaco.api import OverlayPlotContainer, Plot, ArrayPlotData, \
-    add_default_axes, add_default_grids, create_line_plot, Legend
+    add_default_axes, add_default_grids, create_line_plot, Legend, PlotAxis
 from chaco.tools.api import PanTool, ZoomTool, DragZoom, LegendTool
 from ui_helpers import get_file_from_dialog
 import specs
@@ -41,6 +41,9 @@ class SPECSRegion(HasTraits):
         # Traited SPECSRegion owner
         self.region.owner = self
         self.selection = SelectorPanel(self)
+        # Instantiation of the SelectorPanel creates self.selection.counts == False
+        # Setting it True now triggers a trait change event which is what we desire to turn the plot on
+        self.selection.counts = True
 
 
 class SPECSGroup(HasTraits):
@@ -185,18 +188,18 @@ class PlotPanel(HasTraits):
     plot = Instance(Plot)
 
     def __init__(self, **traits):
-        super(PlotPanel, self).__init__(**traits)   # PlotPanel.__init__(self, **traits)
+        super(PlotPanel, self).__init__(**traits)   # HasTraits.__init__(self, **traits)
         self.plot_data = ArrayPlotData()
         self.plot = Plot(self.plot_data)
         self.plot.value_range.low = 0               # fix y-axis min to 0
+        self.plot.index_axis = PlotAxis(self.plot, orientation='bottom', title='Energy [eV]')
+        self.plot.y_axis = PlotAxis(self.plot, orientation='left', title='Intensity [Counts]')
         self.first = True
 
     def add_plot(self, name, xs, ys, **lineplot_args):
-        data = np.vstack((xs,ys)).T
-#        self.plot_data.set_data(name, data)
-        self.plot_data.set_data(name, ys)
-#        self.plot.plot(('index', name), name=name, type='line')
-        self.plot.plot(name, name=name, type='line', **lineplot_args)
+        self.plot_data.set_data(name+'_xs', xs)
+        self.plot_data.set_data(name+'_ys', ys)
+        self.plot.plot((name+'_xs', name+'_ys'), name=name, type='line', **lineplot_args)
 
 #TODO: if we remove the first instance via remove() the mapper and tools are also removed
 #      so I may have to add a transparent 1st plot series that never gets removed
@@ -210,7 +213,8 @@ class PlotPanel(HasTraits):
         self.plot.request_redraw()
 
     def remove_plot(self, name):
-        self.plot_data.del_data(name)
+        self.plot_data.del_data(name+'_xs')
+        self.plot_data.del_data(name+'_ys')
         self.plot.delplot(name)
         self.plot.request_redraw()
 
@@ -250,9 +254,9 @@ class PlotPanel(HasTraits):
         plot.index_mapper = index_mapper
         index_mapper.range.add(plot.index)
 
-    def _plot_default(self):
-        return PlotPanel(padding=50, fill_padding=True,
-                                     bgcolor="white", use_backbuffer=True)
+#    def _plot_default(self):
+#        return PlotPanel(padding=40, fill_padding=True,
+#                                     bgcolor="white", use_backbuffer=True)
 
     traits_view =   View(
                         UItem(
@@ -372,7 +376,7 @@ class SelectorPanel(HasTraits):
         line_attributes = { \
             'counts'            : {'color':'black', 'width':2.0},
             'channel_counts'    : {'color':'blue' , 'width':1.5},
-            'extended_channels' : {'color':'red', 'width':1.5},
+            'extended_channels' : {'color':'red'  , 'width':1.5},
             }[series_name]
         plot_panel.add_plot(name, xs, ys, **line_attributes)
 
