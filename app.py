@@ -10,8 +10,8 @@ from traitsui.api import View, Group, HGroup, VGroup, HSplit, \
 from pyface.api import ImageResource, DirectoryDialog, OK
 from fixes import fix_background_color
 from chaco.api import OverlayPlotContainer, Plot, ArrayPlotData, \
-    add_default_axes, add_default_grids, create_line_plot, Legend, PlotAxis
-from chaco.tools.api import PanTool, ZoomTool, DragZoom, LegendTool
+    add_default_axes, add_default_grids, create_line_plot, PlotAxis
+from chaco.tools.api import PanTool, ZoomTool, DragZoom
 from ui_helpers import get_file_from_dialog
 import specs
 
@@ -91,6 +91,8 @@ class TreePanel(HasTraits):
     # Buttons in the widget group above the tree area
     bt_open_file = Button("Open file...")
     bt_export_file = Button("Export...")
+    cb_header = Bool(True)
+    delimiter = Enum('space','tab','comma')('space')
 
     def _bt_open_file_changed(self):
         ''' Event handler
@@ -112,7 +114,7 @@ class TreePanel(HasTraits):
         ''' Event handler
         Called when the user clicks the Export... button
         '''
-        dlg = DirectoryDialog(title='Save results', default_path=self.most_recent_path)
+        dlg = DirectoryDialog(title='Save results', default_path=self.most_recent_path, style='modal')
         if dlg.open() == OK:
             self.most_recent_path = dlg.path
 
@@ -126,31 +128,54 @@ class TreePanel(HasTraits):
 
                     # x-axis
                     a = [r.get_x_axis()]
+                    h = {'FixedAnalyzerTransmission':'"Binding Axis"',
+                         'ConstantFinalState'       :'"Excitation Axis"',
+                        }.get(r.region.scan_mode,    '"Kinetic Axis"')
+                    delimiter = {'space':' ', 'comma':',', 'tab':'\t'}[self.delimiter]
                     any_checked = False
 
-                    # counts
                     if r.selection.counts:
+                        # counts
                         a.append(r.region.counts)
+                        h += '{}Counts'.format(delimiter)
                         any_checked = True
 
+                        # channel_counts_n
+                        for name in sorted(r.selection._instance_traits()):
+                            if 'channel_counts_' in name:
+                                channel_num = r.selection._get_name_num(name)
+                                a.append(r.region.channel_counts[:,channel_num-1])
+                                h += '{}"Channel {} counts"'.format(delimiter, channel_num)
+
+                        # extended_channels_n
+                        for name in sorted(r.selection._instance_traits()):
+                            if 'extended_channels_' in name:
+                                channel_num = r.selection._get_name_num(name)
+                                a.append(r.region.extended_channels[:,channel_num-1])
+                                h += '{}"Extended channel {}"'.format(delimiter, channel_num)
+                    '''
                     # channel_counts_n
-                    for key, val in sorted(r.selection.get_trait_states().iteritems()):
-                        if val and ('channel_counts_' in key):
-                            a.append(r.region.channel_counts[:,r.selection._get_name_num(key)-1])
+                    for name, enabled in sorted(r.selection.get_trait_states().iteritems()):
+                        if enabled and ('channel_counts_' in name):
+                            a.append(r.region.channel_counts[:,r.selection._get_name_num(name)-1])
                             any_checked = True
 
                     # extended_channels_n
-                    for key, val in sorted(r.selection.get_trait_states().iteritems()):
-                        if val and ('extended_channels_' in key):
-                            a.append(r.region.extended_channels[:,r.selection._get_name_num(key)-1])
+                    for name, enabled in sorted(r.selection.get_trait_states().iteritems()):
+                        if enabled and ('extended_channels_' in name):
+                            a.append(r.region.extended_channels[:,r.selection._get_name_num(name)-1])
                             any_checked = True
+                    '''
 
                     # Write it
                     if any_checked:
-                        a = np.array(a).transpose()
-                        #TODO: what format and newline character are we using here?
                         filename = os.path.join(dlg.path, g.name+'_'+r.name+'.xy')
-                        np.savetxt(filename, a)
+                        with open(filename, 'w') as f:
+                            if self.cb_header:
+                                print >> f, h
+                            a = np.array(a).transpose()
+                            #TODO: what format and newline character are we using here?
+                            np.savetxt(f, a, delimiter=delimiter)
 
     def _has_data(self):
         return self.file_path is not None
@@ -225,7 +250,14 @@ class TreePanel(HasTraits):
     # The tree view
     traits_view =   View(
                         UItem('bt_open_file'),
-                        UItem('bt_export_file', enabled_when='object._has_data()'),
+                        VGroup(
+                            UItem('bt_export_file'),
+                            HGroup(
+                                Item('cb_header', label='Include header'),
+                                Item('delimiter'),
+                            ),
+                            enabled_when='object._has_data()',
+                        ),
                         UItem(
                             name = 'specs_file',
                             editor = tree_editor,
@@ -246,24 +278,19 @@ class PlotPanel(HasTraits):
         self.plot.value_range.low = 0               # fix y-axis min to 0
         self.plot.index_axis = PlotAxis(self.plot, orientation='bottom', title='Energy [eV]')
         self.plot.y_axis = PlotAxis(self.plot, orientation='left', title='Intensity [Counts]')
-        self.first = True
 
+        # Now add a transparent 1st plot series that never gets removed
+        # since if we remove the first instance via remove() the mapper and tools are also removed
+        plot = self.add_plot('tool_plot', [0], [0], bgcolor='white', color='transparent')
+        self.value_mapper, self.index_mapper = self._setup_plot_tools(plot)
 
     def add_plot(self, name, xs, ys, **lineplot_args):
         self.plot_data.set_data(name+'_xs', xs)
         self.plot_data.set_data(name+'_ys', ys)
         self.plot.plot((name+'_xs', name+'_ys'), name=name, type='line', **lineplot_args)
 
-#TODO: if we remove the first instance via remove() the mapper and tools are also removed
-#      so I may have to add a transparent 1st plot series that never gets removed
-
-#        if self.first:
-#            self.value_mapper, self.index_mapper, self.legend = self._setup_plot_tools(plot)
-#            self.first = False
-#        self._setup_mapper(plot, self.value_mapper, self.index_mapper)
-
-#        self.legend.plots = self.plots
         self.plot.request_redraw()
+        return self.plot
 
     def remove_plot(self, name):
         self.plot_data.del_data(name+'_xs')
@@ -274,38 +301,19 @@ class PlotPanel(HasTraits):
     def _setup_plot_tools(self, plot):
         ''' Sets up the background, and several tools on a plot '''
         # Make a white background with grids and axes
-#        plot.bgcolor = 'white'
         plot.bgcolor='transparent'
         add_default_grids(plot)
         add_default_axes(plot)
 
-        # Allow white space around plot
-        plot.index_range.tight_bounds = False
-        plot.index_range.refresh()
-        plot.value_range.tight_bounds = False
-        plot.value_range.refresh()
-
         # The PanTool allows panning around the plot
-        plot.tools.append(PanTool(plot))
+        plot.tools.append(PanTool(plot, drag_button='right'))
 
         # The ZoomTool tool is stateful and allows drawing a zoom
         # box to select a zoom region.
-        zoom = ZoomTool(plot, tool_mode="box", always_on=False)
+        zoom = ZoomTool(plot, tool_mode="box", always_on=True)
         plot.overlays.append(zoom)
 
-        # Add a legend in the upper right corner, and make it relocatable
-        legend = Legend(component=plot, padding=10, align="ur")
-        legend.tools.append(LegendTool(legend, drag_button="right"))
-        plot.overlays.append(legend)
-
-        return plot.value_mapper, plot.index_mapper, legend
-
-    def _setup_mapper(self, plot, value_mapper, index_mapper):
-        ''' Sets up a mapper for given plot '''
-        plot.value_mapper = value_mapper
-        value_mapper.range.add(plot.value)
-        plot.index_mapper = index_mapper
-        index_mapper.range.add(plot.index)
+        return plot.value_mapper, plot.index_mapper
 
 #    def _plot_default(self):
 #        return PlotPanel(padding=40, fill_padding=True,
