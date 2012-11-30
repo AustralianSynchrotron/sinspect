@@ -3,10 +3,12 @@ import os
 #ETSConfig.toolkit = 'qt4'
 import numpy as np
 from enable.api import Component, ComponentEditor
-from traits.api import Str, Bool, Enum, List, HasTraits, Instance, Button, \
-    HTML, on_trait_change
-from traitsui.api import View, Group, HGroup, VGroup, HSplit, \
+from enable.base_tool import BaseTool
+from traits.api import Str, Bool, Float, Enum, List, Dict, Any, \
+    HasTraits, Instance, Button, HTML, on_trait_change
+from traitsui.api import View, Group, HGroup, VGroup, HFlow, HSplit, \
     Item, UItem, TreeEditor, TreeNode
+from traitsui.key_bindings import KeyBinding, KeyBindings
 from pyface.api import ImageResource, DirectoryDialog, OK
 from fixes import fix_background_color
 from chaco.api import OverlayPlotContainer, Plot, ArrayPlotData, \
@@ -85,6 +87,7 @@ class TreePanel(HasTraits):
     specs_file = Instance(SpecsFile)
     file_path = Str(None)
     most_recent_path = Str('')
+    node_selection = Any()
 #    # When a selection is made this gets a reference to the selected tree node instance
 #    node_selection = Instance(HasTraits)
 
@@ -92,7 +95,7 @@ class TreePanel(HasTraits):
     bt_open_file = Button("Open file...")
     bt_export_file = Button("Export...")
     cb_header = Bool(True)
-    delimiter = Enum('space','tab','comma')('space')
+    delimiter = Enum('tab','space','comma')('tab')
 
     def _bt_open_file_changed(self):
         ''' Event handler
@@ -114,12 +117,13 @@ class TreePanel(HasTraits):
         ''' Event handler
         Called when the user clicks the Export... button
         '''
-        dlg = DirectoryDialog(title='Save results', default_path=self.most_recent_path, style='modal')
+        dlg = DirectoryDialog(default_path=self.most_recent_path)
         if dlg.open() == OK:
             self.most_recent_path = dlg.path
 
             # Export all regions in all groups
             for g in self.specs_file.specs_groups:
+                dir_created_for_this_group = False
                 for r in g.specs_regions:
                     # make file region.name+'.xy' in directory g.name
                     print g.name, r.name
@@ -169,7 +173,18 @@ class TreePanel(HasTraits):
 
                     # Write it
                     if any_checked:
-                        filename = os.path.join(dlg.path, g.name+'_'+r.name+'.xy')
+                        if not dir_created_for_this_group:
+                            # Try creating directory if it doesn't exist
+                            try:
+                                dirname = os.path.join(dlg.path, g.name)
+                                os.mkdir(dirname)
+                                dir_created_for_this_group = True
+                            except OSError:
+                                # Something exists already, or it can't be written
+                                #TODO: Give a nice message here
+                                pass
+
+                        filename = os.path.join(dirname, r.name+'.xy')
                         with open(filename, 'w') as f:
                             if self.cb_header:
                                 print >> f, h
@@ -186,6 +201,8 @@ class TreePanel(HasTraits):
     def _region_select(self):
         # Update SelectorPanel
         main_app.selector_panel = self.selection
+        #TODO: call _update_last_selection(self) on anything not in current node_selection
+        print main_app.tree_panel.node_selection
         print 'rs', self.name
 
     def _group_dclick(self):
@@ -200,7 +217,23 @@ class TreePanel(HasTraits):
         Double-clicking a node cycles through selection states of subordinate channels
         all-on -> last-selection -> all-off -> all-on -> ...
         '''
-        print 'dr', self.name, self.region.owner.name
+        self._cycle_region_key(info=None)
+
+    def _cycle_region_key(self, info):
+        for n in self.node_selection:
+            n.selection.cycle()
+
+    def _toggle_key(self, info):
+        for n in self.node_selection:
+            n.selection.counts = not n.selection.counts
+
+    def _select_key(self, info):
+        for n in self.node_selection:
+            n.selection.counts = True
+
+    def _deselect_key(self, info):
+        for n in self.node_selection:
+            n.selection.counts = False
 
 
     # View for objects that aren't edited
@@ -244,7 +277,25 @@ class TreePanel(HasTraits):
                     )
         ],
         editable = False,           # suppress the editor pane as we are using the separate Chaco pane for this
-#        selected = 'node_selection',
+        selected = 'node_selection',
+        selection_mode = 'extended',
+    )
+
+    key_bindings = KeyBindings(
+        KeyBinding( binding1    = 'Space',
+                    binding2    = 't',
+                    description = 'Toggle Selection',
+                    method_name = '_toggle_key' ),
+        KeyBinding( binding1    = '+',
+                    binding2    = '=',
+                    description = 'Select',
+                    method_name = '_select_key' ),
+        KeyBinding( binding1    = '-',
+                    description = 'Deselect',
+                    method_name = '_deselect_key' ),
+        KeyBinding( binding1    = 'r',
+                    description = 'Cycle region',
+                    method_name = '_cycle_region_key' ),
     )
 
     # The tree view
@@ -262,6 +313,7 @@ class TreePanel(HasTraits):
                             name = 'specs_file',
                             editor = tree_editor,
                         ),
+                        key_bindings = key_bindings,
                     )
 
 
@@ -329,6 +381,56 @@ class PlotPanel(HasTraits):
                     )
 
 
+#TODO: Look at LineInspector and HighlightTool
+
+#class LineSelectionTool(BaseTool):
+#    ''' 
+#    From http://enthought-dev.117412.n3.nabble.com/selecting-a-curve-by-clicking-on-it-td3207577.html
+#    enthought.enable.base_tool.BaseTool is a subclass of
+#    enthought.enable.interactor.Interactor that has a 'component'
+#    trait set during __init__
+#    '''
+#
+#    threshold = Float(15.0)  # Threshold in pixels.
+#
+#    def normal_left_down(self, event):
+#        control = event.window.control   # Get the underlying widget.
+#        hits = self.component.components_at(event.x, event.y)
+#        actions = []
+#        for component in hits:
+#            # event.x and event.y are relative to event.window
+#            # and need to be translated to the component's coordinate
+#            # space.
+#            offset_x, offset_y = component.container.position
+#            x = event.x - offset_x
+#            y = event.y - offset_y
+#            # As noted in the enthought.chaco.lineplot.LinePlot.hittest
+#            # method docs:
+#            # "This only checks data points and *not* the actual line
+#            # segments connecting them."
+#            point = component.hittest((x, y), self.threshold)
+#            if point is not None:
+#                # Find the label of the component.
+#                label = None
+#                for candidate, subplots in component.container.plots.iteritems():
+#                    if component in subplots:
+#                        label = candidate
+#                if label is not None:
+#                    action = QtGui.QAction(label, None)
+#                    @action.triggered.connect
+#                    def on_action_triggered(checked, label=label, component=component):
+#                        component.edit_traits()
+#                    actions.append(action)
+#        if len(actions) > 0:
+#            menu = QtGui.QMenu(control)
+#            for action in actions:
+#                menu.addAction(action)
+#            menu.exec_(QtGui.QCursor.pos())
+#        else:
+#            # No actions were created, show no menu.
+#            pass 
+
+
 class SelectorPanel(HasTraits):
     '''
     A panel of checkboxes reflecting the channels within the specs region used for
@@ -344,6 +446,8 @@ class SelectorPanel(HasTraits):
     '''
     name = Str('<unknown>')
     region = Instance(SPECSRegion)
+    last_selection = Dict   # stores counts and channel traits whenever a checkbox is clicked
+    cycle_state = Enum('last_selection', 'all_on', 'all_off')
 
     def __init__(self, region=None, **traits):
         super(SelectorPanel, self).__init__(**traits)   # HasTraits.__init__(self, **traits)
@@ -366,6 +470,8 @@ class SelectorPanel(HasTraits):
             self.add_trait('extended_channels_{}'.format(i+1), Bool)
         # Now we've created all the Bool/checkbox traits default_traits_view() can
         # create a view for them.
+
+        self.cycle_state = 'last_selection'
 
     def default_traits_view(self):
         '''
@@ -467,6 +573,26 @@ class SelectorPanel(HasTraits):
         # so I use it to get the names then use __getattribute__() to evaluate them.
         return dict([(i, self.__getattribute__(i))
                     for i in self._instance_traits().keys() if i is not 'trait_added'])
+
+    def _update_last_selection(self):
+        self.last_selection = dict([(i, self.__getattribute__(i))
+                    for i in self._instance_traits().keys() if i is not 'trait_added'])
+
+    def cycle(self):
+        ''' Cycle the state of the selected channels
+        '''
+        if self.cycle_state == 'last_selection':
+            self._update_last_selection()
+            self.trait_set(**dict([(i, True)
+                    for i in self._instance_traits().keys() if i is not 'trait_added']))
+            self.cycle_state = 'all_on'
+        elif self.cycle_state == 'all_on':
+            self.trait_set(**dict([(i, False)
+                    for i in self._instance_traits().keys() if i is not 'trait_added']))
+            self.cycle_state = 'all_off'
+        else:
+            self.trait_set(**self.last_selection)
+            self.cycle_state = 'last_selection'
 
 
 class MainApp(HasTraits):
