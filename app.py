@@ -2,20 +2,21 @@ import os
 #from traits.etsconfig.api import ETSConfig
 #ETSConfig.toolkit = 'qt4'
 import numpy as np
-from enable.api import Component, ComponentEditor
-from enable.base_tool import BaseTool
-from traits.api import Str, Bool, Float, Enum, List, Dict, Any, \
-    HasTraits, Instance, Button, HTML, on_trait_change
-from traitsui.api import View, Group, HGroup, VGroup, HFlow, HSplit, \
-    Item, UItem, TreeEditor, TreeNode
+from enable.api import ComponentEditor
+from traits.api import Str, Bool, Enum, List, Dict, Any, \
+    HasTraits, Instance, Button, on_trait_change
+from traitsui.api import View, Group, HGroup, VGroup, HSplit, \
+    Item, UItem, TreeEditor, TreeNode, TreeNodeObject, Menu
 from traitsui.key_bindings import KeyBinding, KeyBindings
 from pyface.api import ImageResource, DirectoryDialog, OK
 from fixes import fix_background_color
-from chaco.api import OverlayPlotContainer, Plot, ArrayPlotData, \
-    add_default_axes, add_default_grids, create_line_plot, PlotAxis
-from chaco.tools.api import PanTool, ZoomTool, DragZoom
+from chaco.api import Plot, ArrayPlotData, PlotAxis, \
+    add_default_axes, add_default_grids
+from chaco.tools.api import PanTool, ZoomTool
+from chaco.tools.tool_states import PanState
 from ui_helpers import get_file_from_dialog
 import specs
+
 
 # Linux/Ubuntu themes cause the background of windows to be ugly and dark
 # grey. This fixes that.
@@ -46,7 +47,7 @@ class SPECSRegion(HasTraits):
         # Instantiation of the SelectorPanel creates it with self.selection.counts==False
         # Setting self.selection.counts=True now triggers a trait change event which
         # triggers creation of the related plot series
-        self.selection.counts = True
+        # self.selection.counts = True
 
     def get_x_axis(self):
         ''' Return x-axis data based on the scan_mode metadata '''
@@ -71,14 +72,32 @@ class SpecsFile(HasTraits):
     name = Str('<unknown>')
     specs_groups = List(SPECSGroup)     # container for the subordinate groups
 
+    def _uniquify_names(self, names):
+        ''' names is a list of strings. This generator function ensures all strings in
+        the names list are unique by appending -n to the name if it is repeated, where n
+        is an incrementing number. e.g. if names is ['a', 'b', 'c', 'a', 'b', 'a'] this
+        yields ['a', 'b', 'c', 'a-1', 'b-1', 'a-2']
+        '''
+        freqs = {}
+        for name in names:
+            freqs[name] = freqs.get(name, 0) + 1
+            if freqs[name] > 1:
+                yield '{}-{}'.format(name, freqs[name]-1)
+            else:
+                yield name
+
     def open(self, filename):
         ''' Create all objects corresponding to the tree '''
         s = specs.SPECS(filename)
         self.name = filename
+        group_names = [g.name for g in s.groups]
+        uniquify_group_gen = self._uniquify_names(group_names)
         for group in s.groups:
-            specs_group = SPECSGroup(name=group.name, specs_regions=[])
+            specs_group = SPECSGroup(name=uniquify_group_gen.next(), specs_regions=[])
+            region_names = [r.name for r in group.regions]
+            uniquify_region_gen = self._uniquify_names(region_names)
             for region in group.regions:
-                specs_group.specs_regions.append(SPECSRegion(name=region.name, region=region))
+                specs_group.specs_regions.append(SPECSRegion(name=uniquify_region_gen.next(), region=region))
             self.specs_groups.append(specs_group)
         return self
 
@@ -110,6 +129,8 @@ class TreePanel(HasTraits):
         ''' Trait event handler
         When the file dialog box is closed with a file selection, open that file
         '''
+        plot_panel.remove_all_plots()
+
         self.name = self.file_path
         self.specs_file = SpecsFile().open(self.file_path)
 
@@ -147,27 +168,27 @@ class TreePanel(HasTraits):
                         # channel_counts_n
                         for name in sorted(r.selection._instance_traits()):
                             if 'channel_counts_' in name:
-                                channel_num = r.selection._get_name_num(name)
+                                channel_num = get_name_num(name)
                                 a.append(r.region.channel_counts[:,channel_num-1])
                                 h += '{}"Channel {} counts"'.format(delimiter, channel_num)
 
                         # extended_channels_n
                         for name in sorted(r.selection._instance_traits()):
                             if 'extended_channels_' in name:
-                                channel_num = r.selection._get_name_num(name)
+                                channel_num = get_name_num(name)
                                 a.append(r.region.extended_channels[:,channel_num-1])
                                 h += '{}"Extended channel {}"'.format(delimiter, channel_num)
                     '''
                     # channel_counts_n
                     for name, enabled in sorted(r.selection.get_trait_states().iteritems()):
                         if enabled and ('channel_counts_' in name):
-                            a.append(r.region.channel_counts[:,r.selection._get_name_num(name)-1])
+                            a.append(r.region.channel_counts[:,get_name_num(name)-1])
                             any_checked = True
 
                     # extended_channels_n
                     for name, enabled in sorted(r.selection.get_trait_states().iteritems()):
                         if enabled and ('extended_channels_' in name):
-                            a.append(r.region.extended_channels[:,r.selection._get_name_num(name)-1])
+                            a.append(r.region.extended_channels[:,get_name_num(name)-1])
                             any_checked = True
                     '''
 
@@ -210,18 +231,45 @@ class TreePanel(HasTraits):
         Double-clicking a node cycles through selection states of subordinate regions
         all-on -> last-selection -> all-off -> all-on -> ...
         '''
-        print 'dg', self.name
+        region_state = {r.selection.counts for r in self.specs_regions}
+        if True in region_state:
+            # at least one of the regions is enabled, disable all
+            for r in self.specs_regions:
+                r.selection.region_cycle(all_off=True)
+        else:
+            # enable all counts
+            for r in self.specs_regions:
+                r.selection.region_cycle(counts_only=True)
+
 
     def _region_dclick(self):
         '''
         Double-clicking a node cycles through selection states of subordinate channels
         all-on -> last-selection -> all-off -> all-on -> ...
         '''
-        self._cycle_region_key(info=None)
+        for s in tree_panel.node_selection:
+            s.icon = 'none'
+        tree_panel._cycle_region_key(info=None)
+
 
     def _cycle_region_key(self, info):
         for n in self.node_selection:
-            n.selection.cycle()
+            n.selection.region_cycle()
+            state = n.selection.get_trait_states()
+            channel_counts_states = {val for key,val in state.iteritems() if get_name_body(key)=='channel_counts'}
+            if True in channel_counts_states and False in channel_counts_states:
+                self.set_node_icon('some')
+            elif True in channel_counts_states:
+                self.set_node_icon('all')
+            else:
+                self.set_node_icon('none')
+
+
+    def set_node_icon(self, mode):
+        for node in self.node_selection:
+            node.icon = mode
+        print mode
+
 
     def _toggle_key(self, info):
         for n in self.node_selection:
@@ -248,7 +296,9 @@ class TreePanel(HasTraits):
                       label     = 'name',
                       view      = no_view,
                       add       = [SPECSGroup],
+                      menu      = Menu(),
 #                      on_dclick = _bt_open_file_changed,
+                      rename_me = False,
                       icon_path = 'resources',
                       icon_open = 'file.ico',
                       icon_group = 'file.ico',
@@ -260,6 +310,8 @@ class TreePanel(HasTraits):
                       label     = 'name',
                       view      = no_view,
                       add       = [SPECSRegion],
+                      menu      = Menu(),
+                      rename_me = False,
                       on_select = _group_select,
                       on_dclick = _group_dclick,
                       icon_path = 'resources',
@@ -270,6 +322,8 @@ class TreePanel(HasTraits):
                       auto_open = True,
                       label     = 'name',
                       view      = no_view,
+                      menu      = Menu(),
+                      rename_me = False,
                       on_select = _region_select,
                       on_dclick = _region_dclick,
                       icon_path = 'resources',
@@ -302,19 +356,128 @@ class TreePanel(HasTraits):
     traits_view =   View(
                         UItem('bt_open_file'),
                         VGroup(
-                            UItem('bt_export_file'),
                             HGroup(
                                 Item('cb_header', label='Include header'),
                                 Item('delimiter'),
                             ),
-                            enabled_when='object._has_data()',
+                            UItem('bt_export_file'),
+                            enabled_when = 'object._has_data()',
+                            label = 'Data Export',
+                            show_border = True,
                         ),
                         UItem(
                             name = 'specs_file',
                             editor = tree_editor,
                         ),
                         key_bindings = key_bindings,
+
                     )
+
+
+class PanToolWithHistory(PanTool):
+    def __init__(self, *args, **kwargs):
+        self.history_tool = kwargs.get('history_tool', None)
+        if 'history_tool' in kwargs:
+            del kwargs['history_tool']
+        super(PanToolWithHistory, self).__init__(*args, **kwargs)
+
+    def _start_pan(self, event, capture_mouse=False):
+        super(PanToolWithHistory, self)._start_pan(event, capture_mouse=False)
+        if self.history_tool is not None:
+            self._start_pan_xy = self._original_xy
+            # Save the current data range center so this movement can be
+            # undone later.
+            self._prev_state = self.history_tool.data_range_center()
+
+    def _end_pan(self, event):
+        super(PanToolWithHistory, self)._end_pan(event)
+        if self.history_tool is not None:
+            # Only append to the undo history if we have moved a significant
+            # amount. This avoids conflicts with the single-click undo
+            # function.
+            new_xy = np.array((event.x, event.y))
+            old_xy = np.array(self._start_pan_xy)
+            if any(abs(new_xy - old_xy) > 10):
+                next = self.history_tool.data_range_center()
+                prev = self._prev_state
+                if next != prev:
+                    self.history_tool.append_state(PanState(prev, next))
+
+
+class ClickUndoZoomTool(ZoomTool):
+    def __init__(self, component=None, undo_button='right', *args, **kwargs):
+        super(ClickUndoZoomTool, self).__init__(component, *args, **kwargs)
+        self.undo_button = undo_button
+        self._reverting = False
+        self.minimum_undo_delta = 3
+
+    def normal_left_down(self, event):
+        """ Handles the left mouse button being pressed while the tool is
+        in the 'normal' state.
+
+        If the tool is enabled or always on, it starts selecting.
+        """
+        if self.undo_button == 'left':
+            self._undo_screen_start = (event.x, event.y)
+        super(ClickUndoZoomTool, self).normal_left_down(event)
+
+    def normal_right_down(self, event):
+        """ Handles the right mouse button being pressed while the tool is
+        in the 'normal' state.
+
+        If the tool is enabled or always on, it starts selecting.
+        """
+        if self.undo_button == 'right':
+            self._undo_screen_start = (event.x, event.y)
+        super(ClickUndoZoomTool, self).normal_right_down(event)
+
+    def normal_left_up(self, event):
+        if self.undo_button == 'left':
+            if self._mouse_didnt_move(event):
+                self.revert_history()
+
+    def normal_right_up(self, event):
+        if self.undo_button == 'right':
+            if self._mouse_didnt_move(event):
+                self.revert_history()
+
+    def selecting_left_up(self, event):
+        self.normal_left_up(event)
+        super(ClickUndoZoomTool, self).selecting_left_up(event)
+
+    def selecting_right_up(self, event):
+        self.normal_right_up(event)
+        super(ClickUndoZoomTool, self).selecting_right_up(event)
+
+    def _mouse_didnt_move(self, event):
+        start = np.array(self._undo_screen_start)
+        end = np.array((event.x, event.y))
+        return all(abs(end - start) == 0)
+
+    def clear_undo_history(self):
+        self._history_index = 0
+        self._history = self._history[:1]
+
+    def revert_history(self):
+        if self._history_index > 0:
+            self._history_index -= 1
+            self._prev_state_pressed()
+
+    def revert_history_all(self):
+        self._history_index = 0
+        self._reset_state_pressed()
+
+    def _get_mapper_center(self, mapper):
+        bounds = mapper.range.low, mapper.range.high
+        return bounds[0] + (bounds[1] - bounds[0])/2.
+
+    def data_range_center(self):
+        x_center = self._get_mapper_center(self._get_x_mapper())
+        y_center = self._get_mapper_center(self._get_y_mapper())
+        return x_center, y_center
+
+    def append_state(self, state):
+        self._append_state(state, set_index=True)
 
 
 class PlotPanel(HasTraits):
@@ -345,10 +508,29 @@ class PlotPanel(HasTraits):
         return self.plot
 
     def remove_plot(self, name):
+        if name is 'tool_plot':
+            # Never remove this one since the chaco tools are attached to it 
+            return
         self.plot_data.del_data(name+'_xs')
         self.plot_data.del_data(name+'_ys')
         self.plot.delplot(name)
         self.plot.request_redraw()
+
+    def remove_all_plots(self):
+        # Make sure we don't remove 'tool_plot'
+        for p in plot_panel.plot.plots.keys():
+            plot_panel.remove_plot(p)
+
+    def get_plot(self, name):
+        ''' Get a plot reference from the name '''
+        return self.plot.plots[name][0]
+
+    def set_plot_attributes(self, name, **attributes):
+        try:
+            for key, value in attributes.iteritems():
+                setattr(self.plot.plots[name][0], key, value)
+        except KeyError:
+            pass
 
     def _setup_plot_tools(self, plot):
         ''' Sets up the background, and several tools on a plot '''
@@ -358,11 +540,11 @@ class PlotPanel(HasTraits):
         add_default_axes(plot)
 
         # The PanTool allows panning around the plot
-        plot.tools.append(PanTool(plot, drag_button='right'))
+        plot.tools.append(PanToolWithHistory(plot, drag_button='right'))
 
         # The ZoomTool tool is stateful and allows drawing a zoom
         # box to select a zoom region.
-        zoom = ZoomTool(plot, tool_mode="box", always_on=True)
+        zoom = ClickUndoZoomTool(plot, tool_mode="box", always_on=True)
         plot.overlays.append(zoom)
 
         return plot.value_mapper, plot.index_mapper
@@ -431,6 +613,19 @@ class PlotPanel(HasTraits):
 #            pass 
 
 
+def get_name_body(series_name):
+    ''' Get first part of name
+    e.g. get_name_body('foo_bar_baz') returns foo_bar
+    '''
+    return '_'.join(series_name.split('_')[:2])
+
+def get_name_num(series_name):
+    ''' Get last part of name.
+    e.g. get_name_num('foo_bar_baz') returns baz
+    '''
+    return int(series_name.split('_')[-1])
+
+
 class SelectorPanel(HasTraits):
     '''
     A panel of checkboxes reflecting the channels within the specs region used for
@@ -447,7 +642,8 @@ class SelectorPanel(HasTraits):
     name = Str('<unknown>')
     region = Instance(SPECSRegion)
     last_selection = Dict   # stores counts and channel traits whenever a checkbox is clicked
-    cycle_state = Enum('last_selection', 'all_on', 'all_off')
+    cycle_state = Enum('counts_only', 'all_on', 'all_off')
+    plots = {}
 
     def __init__(self, region=None, **traits):
         super(SelectorPanel, self).__init__(**traits)   # HasTraits.__init__(self, **traits)
@@ -459,19 +655,22 @@ class SelectorPanel(HasTraits):
         self.add_trait('counts', Bool)
 
         # create traits for each channel_counts_n checkbox
-        channel_counts_len = region.region.channel_counts.shape[1]
-        for i in range(channel_counts_len):
-            self.add_trait('channel_counts_{}'.format(i+1), Bool)
-        # use self._instance_traits() to list these traits
+        if region.region.channel_counts is not None:
+            channel_counts_len = region.region.channel_counts.shape[1]
+            for i in range(channel_counts_len):
+                self.add_trait('channel_counts_{}'.format(i+1), Bool)
+            # use self._instance_traits() to list these traits
 
         # create traits for each extended_channels_n checkbox
-        extended_channels_len = region.region.extended_channels.shape[1]
-        for i in range(extended_channels_len):
-            self.add_trait('extended_channels_{}'.format(i+1), Bool)
+        if region.region.extended_channels is not None:
+            extended_channels_len = region.region.extended_channels.shape[1]
+            for i in range(extended_channels_len):
+                self.add_trait('extended_channels_{}'.format(i+1), Bool)
         # Now we've created all the Bool/checkbox traits default_traits_view() can
         # create a view for them.
 
-        self.cycle_state = 'last_selection'
+        self.cycle_state = 'counts_only'
+
 
     def default_traits_view(self):
         '''
@@ -487,21 +686,26 @@ class SelectorPanel(HasTraits):
             group1.content = []
             group1.content.append(Item('counts', label='Counts'))
             # channel_counts_x group
-            group = HGroup()
-            group.content = [Item(name, label=name.split('_')[-1])
+            channel_counts_buttons = [Item(name, label=name.split('_')[-1])
                             for name in sorted(trait_dict) if 'channel_counts_' in name]
-            group.show_border = True
-            group.label = 'Channel Counts'
-            group1.content.append(group)
+            if len(channel_counts_buttons) > 0:
+                group = HGroup()
+                group.content = channel_counts_buttons
+                group.show_border = True
+                group.label = 'Channel Counts'
+                group1.content.append(group)
             # extended_channels_x group
-            group = HGroup()
-            group.content = [Item(name, label=name.split('_')[-1])
+            extended_channels_buttons = [Item(name, label=name.split('_')[-1])
                             for name in sorted(trait_dict) if 'extended_channels_' in name]
-            group.show_border = True
-            group.label = 'Extended Channels'
-            group1.content.append(group)
+            if len(extended_channels_buttons) > 0:
+                group = HGroup()
+                group.content = extended_channels_buttons
+                group.show_border = True
+                group.label = 'Extended Channels'
+                group1.content.append(group)
             items.append(group1)
         return View(*items)
+
 
     def _counts_changed(self, trait, old, new):
         ''' Trait event handler
@@ -518,7 +722,7 @@ class SelectorPanel(HasTraits):
         A channel_counts_n or extended_channels_n checkbox was toggled
         '''
         if new:
-            self._add_plot(self.region.name, trait, self._get_name_num(trait))
+            self._add_plot(self.region.name, trait, get_name_num(trait))
         else:
             self._remove_plot(self.region.name, trait)
 
@@ -527,18 +731,6 @@ class SelectorPanel(HasTraits):
         which together are assumed to form a unique pair
         '''
         return '{}_{}'.format(region_name, series_name)
-
-    def _get_name_body(self, series_name):
-        ''' Get first part of name
-        e.g. _get_name_body('foo_bar_baz') returns foo_bar
-        '''
-        return '_'.join(series_name.split('_')[:2])
-
-    def _get_name_num(self, series_name):
-        ''' Get last part of name.
-        e.g. _get_name_num('foo_bar_baz') returns baz
-        '''
-        return int(series_name.split('_')[-1])
 
     def _add_plot(self, region_name, series_name, column=None):
         ''' Adds a plot to the chaco plot widget. '''
@@ -550,7 +742,7 @@ class SelectorPanel(HasTraits):
             # Get 'first_second' part of the name 'first_second_n' which will either be
             # 'channel_counts' or 'extended_channels'. Then use this to retrieve the
             # matching array from the specs.SPECSRegion object.
-            series_name = self._get_name_body(series_name)
+            series_name = get_name_body(series_name)
             ys = self.region.region.__getattribute__(series_name)[:,column-1]
 
         line_attributes = { \
@@ -578,11 +770,23 @@ class SelectorPanel(HasTraits):
         self.last_selection = dict([(i, self.__getattribute__(i))
                     for i in self._instance_traits().keys() if i is not 'trait_added'])
 
-    def cycle(self):
+    def region_cycle(self, all_off=False, counts_only=False):
         ''' Cycle the state of the selected channels
         '''
-        if self.cycle_state == 'last_selection':
-            self._update_last_selection()
+        if all_off:
+            self.trait_set(**dict([(i, False)
+                    for i in self._instance_traits().keys() if i is not 'trait_added']))
+            self.cycle_state = 'all_off'
+            return
+
+        if counts_only:
+            self.trait_set(**dict([(i, False)
+                    for i in self._instance_traits().keys() if i is not 'trait_added']))
+            self.counts = True
+            self.cycle_state = 'counts_only'
+            return
+
+        if self.cycle_state == 'counts_only':
             self.trait_set(**dict([(i, True)
                     for i in self._instance_traits().keys() if i is not 'trait_added']))
             self.cycle_state = 'all_on'
@@ -591,8 +795,8 @@ class SelectorPanel(HasTraits):
                     for i in self._instance_traits().keys() if i is not 'trait_added']))
             self.cycle_state = 'all_off'
         else:
-            self.trait_set(**self.last_selection)
-            self.cycle_state = 'last_selection'
+            self.counts = True
+            self.cycle_state = 'counts_only'
 
 
 class MainApp(HasTraits):
