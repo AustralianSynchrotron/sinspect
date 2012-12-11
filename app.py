@@ -111,8 +111,8 @@ class TreePanel(HasTraits):
 #    node_selection = Instance(HasTraits)
 
     # Buttons in the widget group above the tree area
-    bt_open_file = Button("Open file...")
-    bt_export_file = Button("Export...")
+    bt_open_file = Button('Open file...')
+    bt_export_file = Button('Export...')
     cb_header = Bool(True)
     delimiter = Enum('tab','space','comma')('tab')
 
@@ -639,11 +639,20 @@ class SelectorPanel(HasTraits):
     Instead of just defining a default view here, I build it using
     def default_traits_view(self):
     '''
+    global tree_panel
+    global selector_panel
+    global plot_panel
+
     name = Str('<unknown>')
     region = Instance(SPECSRegion)
     last_selection = Dict   # stores counts and channel traits whenever a checkbox is clicked
     cycle_state = Enum('counts_only', 'all_on', 'all_off')
+    cycle_channel_counts_state = Enum('all_on', 'all_off')('all_off')
+    cycle_extended_channels_state = Enum('all_on', 'all_off')('all_off')
     plots = {}
+    bt_cycle_channel_counts = Button('Toggle')
+    bt_cycle_extended_channels = Button('Toggle')
+    bt_to_selection = Button('To selection')
 
     def __init__(self, region=None, **traits):
         super(SelectorPanel, self).__init__(**traits)   # HasTraits.__init__(self, **traits)
@@ -684,19 +693,31 @@ class SelectorPanel(HasTraits):
         if 'counts' in trait_dict:
             group1 = HGroup()
             group1.content = []
-            group1.content.append(Item('counts', label='Counts'))
+
+            # counts group
+            group = HGroup()
+            group.content = []
+            group.content.append(Item('counts', label='Counts'))
+            group.content.append(UItem('bt_to_selection'))
+            group.label = 'Counts'
+            group.show_border = True
+            group1.content.append(group)
+
             # channel_counts_x group
             channel_counts_buttons = [Item(name, label=name.split('_')[-1])
                             for name in sorted(trait_dict) if 'channel_counts_' in name]
+            channel_counts_buttons.append(UItem('bt_cycle_channel_counts'))
             if len(channel_counts_buttons) > 0:
                 group = HGroup()
                 group.content = channel_counts_buttons
                 group.show_border = True
                 group.label = 'Channel Counts'
                 group1.content.append(group)
+
             # extended_channels_x group
             extended_channels_buttons = [Item(name, label=name.split('_')[-1])
                             for name in sorted(trait_dict) if 'extended_channels_' in name]
+            extended_channels_buttons.append(UItem('bt_cycle_extended_channels'))
             if len(extended_channels_buttons) > 0:
                 group = HGroup()
                 group.content = extended_channels_buttons
@@ -706,6 +727,10 @@ class SelectorPanel(HasTraits):
             items.append(group1)
         return View(*items)
 
+    def _bt_to_selection_changed(self):
+        for r in tree_panel.node_selection:
+            r.selection.counts = self.counts
+            print r.selection.counts
 
     def _counts_changed(self, trait, old, new):
         ''' Trait event handler
@@ -757,6 +782,15 @@ class SelectorPanel(HasTraits):
         name = self._name_plot(region_name, series_name)
         plot_panel.remove_plot(name)
 
+    def _is_bool_trait(self, t):
+        ''' Return true iff t evaluates to a bool when accessed as an attribute,
+        such as a Bool trait 
+        '''
+        try:
+            return type(self.__getattribute__(t)) is bool
+        except AttributeError:
+            return False
+
     def get_trait_states(self):
         ''' Return a dictionary of trait_name:value entries associated with this
         selector panel.
@@ -764,39 +798,73 @@ class SelectorPanel(HasTraits):
         # I don't know how to evaluate the trait values directly from _instance_traits()
         # so I use it to get the names then use __getattribute__() to evaluate them.
         return dict([(i, self.__getattribute__(i))
-                    for i in self._instance_traits().keys() if i is not 'trait_added'])
+                    for i in self._instance_traits().keys()
+                    if self._is_bool_trait(i)])
 
     def _update_last_selection(self):
         self.last_selection = dict([(i, self.__getattribute__(i))
-                    for i in self._instance_traits().keys() if i is not 'trait_added'])
+                    for i in self._instance_traits().keys()
+                    if self._is_bool_trait(i)])
 
     def region_cycle(self, all_off=False, counts_only=False):
         ''' Cycle the state of the selected channels
         '''
         if all_off:
             self.trait_set(**dict([(i, False)
-                    for i in self._instance_traits().keys() if i is not 'trait_added']))
+                    for i in self._instance_traits().keys()
+                    if self._is_bool_trait(i)]))
             self.cycle_state = 'all_off'
             return
 
         if counts_only:
             self.trait_set(**dict([(i, False)
-                    for i in self._instance_traits().keys() if i is not 'trait_added']))
+                    for i in self._instance_traits().keys()
+                    if self._is_bool_trait(i)]))
             self.counts = True
             self.cycle_state = 'counts_only'
             return
 
         if self.cycle_state == 'counts_only':
             self.trait_set(**dict([(i, True)
-                    for i in self._instance_traits().keys() if i is not 'trait_added']))
+                    for i in self._instance_traits().keys()
+                    if self._is_bool_trait(i)]))
             self.cycle_state = 'all_on'
         elif self.cycle_state == 'all_on':
             self.trait_set(**dict([(i, False)
-                    for i in self._instance_traits().keys() if i is not 'trait_added']))
+                    for i in self._instance_traits().keys()
+                    if self._is_bool_trait(i)]))
             self.cycle_state = 'all_off'
         else:
             self.counts = True
             self.cycle_state = 'counts_only'
+
+    def _bt_cycle_channel_counts_changed(self):
+        ''' Toggle the state of the counts channels
+        '''
+        if self.cycle_channel_counts_state == 'all_on':
+            self.trait_set(**dict([(i, False)
+                    for i in self._instance_traits().keys()
+                    if get_name_body(i)=='channel_counts']))
+            self.cycle_channel_counts_state = 'all_off'
+        else:
+            self.trait_set(**dict([(i, True)
+                    for i in self._instance_traits().keys()
+                    if get_name_body(i)=='channel_counts']))
+            self.cycle_channel_counts_state = 'all_on'
+
+    def _bt_cycle_extended_channels_changed(self):
+        ''' Toggle the state of the counts channels
+        '''
+        if self.cycle_extended_channels_state == 'all_on':
+            self.trait_set(**dict([(i, False)
+                    for i in self._instance_traits().keys()
+                    if get_name_body(i)=='extended_channels']))
+            self.cycle_extended_channels_state = 'all_off'
+        else:
+            self.trait_set(**dict([(i, True)
+                    for i in self._instance_traits().keys()
+                    if get_name_body(i)=='extended_channels']))
+            self.cycle_extended_channels_state = 'all_on'
 
 
 class MainApp(HasTraits):
