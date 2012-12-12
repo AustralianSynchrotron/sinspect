@@ -32,13 +32,18 @@ class SPECSRegion(HasTraits):
     ''' The traited SPECSRegion contains a specs.SPECSRegion object and
     represents a Region node in the TreeEditor
     '''
-    name   = Str('<unknown>')
+    # This is the labeled name which is relected in the tree label
+    label_name = Str('<unknown>')
+    # The labeled name will be derived from this. This is also used for any matching, the
+    # export filename etc.
+    name = Str('<unknown>')
     region = Instance(specs.SPECSRegion)    # The reference to the contained region object
     selection = Instance('SelectorPanel')   # A string argument here allows a forward reference
 
     def __init__(self, name, region, **traits):
         super(SPECSRegion, self).__init__(**traits) # HasTraits.__init__(self, **traits)
         self.name = name
+        self.label_name = '  {}'.format(name) # initialise label to this
         self.region = region
         # Add a reference to the specs.SPECSRegion object in case we want access to its
         # Traited SPECSRegion owner
@@ -59,6 +64,33 @@ class SPECSRegion(HasTraits):
         else:
             xs = r.kinetic_axis
         return xs
+
+    def update_label(self):
+        self.label_name = self._get_label()
+
+    def _get_label(self):
+        ''' Return a string with the name taken from the the underlying sepcs.SPECSRegion
+        object prepended by an indicator of the checked status as follows:
+        no   channels selected: space, space, name
+        some channels selected:     -, space, name
+        all  channels selected:     +, space, name
+        '''
+        # get state of channels
+        s = self.selection
+        bool_states = dict([(i, s.__getattribute__(i))
+            for i in s._instance_traits().keys()
+            if is_bool_trait(s, i)])
+        channel_counts_states = {val for key,val in bool_states.iteritems()
+                                 if get_name_body(key)=='channel_counts'}
+        if bool_states['counts']:
+            label = '* {}'.format(self.name)
+        #elif True in channel_counts_states and False in channel_counts_states:
+        #    label = '+ {}'.format(self.name)
+        elif True in channel_counts_states:
+            label = '- {}'.format(self.name)
+        else:
+            label = '  {}'.format(self.name)
+        return label
 
 
 class SPECSGroup(HasTraits):
@@ -94,8 +126,11 @@ class SpecsFile(HasTraits):
         uniquify_group_gen = self._uniquify_names(group_names)
         for group in s.groups:
             specs_group = SPECSGroup(name=uniquify_group_gen.next(), specs_regions=[])
+            # Get the names from the underlying specs.SPECSRegion objects
             region_names = [r.name for r in group.regions]
+            # Force them to be unique
             uniquify_region_gen = self._uniquify_names(region_names)
+            # Now create our Traited SPECSRegion objects
             for region in group.regions:
                 specs_group.specs_regions.append(SPECSRegion(name=uniquify_region_gen.next(), region=region))
             self.specs_groups.append(specs_group)
@@ -300,8 +335,8 @@ class TreePanel(HasTraits):
 #                      on_dclick = _bt_open_file_changed,
                       rename_me = False,
                       icon_path = 'resources',
-                      icon_open = 'file.ico',
-                      icon_group = 'file.ico',
+#                      icon_open = 'file.ico',
+#                      icon_group = 'file.ico',
                     ),
 
             TreeNode( node_for  = [SPECSGroup],
@@ -315,19 +350,19 @@ class TreePanel(HasTraits):
                       on_select = _group_select,
                       on_dclick = _group_dclick,
                       icon_path = 'resources',
-                      icon_open = 'group.ico',
+#                      icon_open = 'group.ico',
                     ),
 
             TreeNode( node_for  = [SPECSRegion],
                       auto_open = True,
-                      label     = 'name',
+                      label     = 'label_name',
                       view      = no_view,
                       menu      = Menu(),
                       rename_me = False,
                       on_select = _region_select,
                       on_dclick = _region_dclick,
                       icon_path = 'resources',
-                      icon_item = 'region.ico',
+#                      icon_item = 'region.ico',
                     )
         ],
         editable = False,           # suppress the editor pane as we are using the separate Chaco pane for this
@@ -626,6 +661,16 @@ def get_name_num(series_name):
     return int(series_name.split('_')[-1])
 
 
+def is_bool_trait(object, t):
+    ''' Return true iff t evaluates to a bool when accessed as an attribute,
+    such as a Bool trait 
+    '''
+    try:
+        return type(object.__getattribute__(t)) is bool
+    except AttributeError:
+        return False
+
+
 class SelectorPanel(HasTraits):
     '''
     A panel of checkboxes reflecting the channels within the specs region used for
@@ -740,6 +785,7 @@ class SelectorPanel(HasTraits):
             self._add_plot(self.region.name, trait)
         else:
             self._remove_plot(self.region.name, trait)
+        self.region.update_label()
 
     @on_trait_change('channel_counts_+, extended_channels_+')
     def _channel_counts_x_changed(self, container, trait, new):
@@ -750,6 +796,7 @@ class SelectorPanel(HasTraits):
             self._add_plot(self.region.name, trait, get_name_num(trait))
         else:
             self._remove_plot(self.region.name, trait)
+        self.region.update_label()
 
     def _name_plot(self, region_name, series_name):
         ''' Make a unique name based on the region_name and series_name parts
@@ -782,15 +829,6 @@ class SelectorPanel(HasTraits):
         name = self._name_plot(region_name, series_name)
         plot_panel.remove_plot(name)
 
-    def _is_bool_trait(self, t):
-        ''' Return true iff t evaluates to a bool when accessed as an attribute,
-        such as a Bool trait 
-        '''
-        try:
-            return type(self.__getattribute__(t)) is bool
-        except AttributeError:
-            return False
-
     def get_trait_states(self):
         ''' Return a dictionary of trait_name:value entries associated with this
         selector panel.
@@ -799,12 +837,12 @@ class SelectorPanel(HasTraits):
         # so I use it to get the names then use __getattribute__() to evaluate them.
         return dict([(i, self.__getattribute__(i))
                     for i in self._instance_traits().keys()
-                    if self._is_bool_trait(i)])
+                    if is_bool_trait(self, i)])
 
     def _update_last_selection(self):
         self.last_selection = dict([(i, self.__getattribute__(i))
                     for i in self._instance_traits().keys()
-                    if self._is_bool_trait(i)])
+                    if is_bool_trait(self, i)])
 
     def region_cycle(self, all_off=False, counts_only=False):
         ''' Cycle the state of the selected channels
@@ -812,14 +850,14 @@ class SelectorPanel(HasTraits):
         if all_off:
             self.trait_set(**dict([(i, False)
                     for i in self._instance_traits().keys()
-                    if self._is_bool_trait(i)]))
+                    if is_bool_trait(self, i)]))
             self.cycle_state = 'all_off'
             return
 
         if counts_only:
             self.trait_set(**dict([(i, False)
                     for i in self._instance_traits().keys()
-                    if self._is_bool_trait(i)]))
+                    if is_bool_trait(self, i)]))
             self.counts = True
             self.cycle_state = 'counts_only'
             return
@@ -827,12 +865,12 @@ class SelectorPanel(HasTraits):
         if self.cycle_state == 'counts_only':
             self.trait_set(**dict([(i, True)
                     for i in self._instance_traits().keys()
-                    if self._is_bool_trait(i)]))
+                    if is_bool_trait(self, i)]))
             self.cycle_state = 'all_on'
         elif self.cycle_state == 'all_on':
             self.trait_set(**dict([(i, False)
                     for i in self._instance_traits().keys()
-                    if self._is_bool_trait(i)]))
+                    if is_bool_trait(self, i)]))
             self.cycle_state = 'all_off'
         else:
             self.counts = True
