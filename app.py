@@ -6,7 +6,7 @@ from enable.api import ComponentEditor
 from traits.api import Str, Bool, Enum, List, Dict, Any, \
     HasTraits, Instance, Button, on_trait_change
 from traitsui.api import View, Group, HGroup, VGroup, HSplit, \
-    Item, UItem, TreeEditor, TreeNode, TreeNodeObject, Menu
+    Item, UItem, TreeEditor, TreeNode, Menu, Action, Handler
 from traitsui.key_bindings import KeyBinding, KeyBindings
 from pyface.api import ImageResource, DirectoryDialog, OK
 from fixes import fix_background_color
@@ -82,11 +82,13 @@ class SPECSRegion(HasTraits):
             if is_bool_trait(s, i)])
         channel_counts_states = {val for key,val in bool_states.iteritems()
                                  if get_name_body(key)=='channel_counts'}
+        extended_channels_states = {val for key,val in bool_states.iteritems()
+                                 if get_name_body(key)=='extended_channels'}
         if bool_states['counts']:
             label = '* {}'.format(self.name)
         #elif True in channel_counts_states and False in channel_counts_states:
         #    label = '+ {}'.format(self.name)
-        elif True in channel_counts_states:
+        elif True in channel_counts_states or True in extended_channels_states:
             label = '- {}'.format(self.name)
         else:
             label = '  {}'.format(self.name)
@@ -148,6 +150,9 @@ class TreePanel(HasTraits):
     # Buttons in the widget group above the tree area
     bt_open_file = Button('Open file...')
     bt_export_file = Button('Export...')
+    bt_copy_to_selection = Button('Copy From Ref:')
+    lb_ref = Str('')
+    ref = Instance(SPECSRegion)
     cb_header = Bool(True)
     delimiter = Enum('tab','space','comma')('tab')
 
@@ -251,8 +256,16 @@ class TreePanel(HasTraits):
     def _has_data(self):
         return self.file_path is not None
 
+    def _reference_set(self):
+        return self.lb_ref is not ''
+
     def _group_select(self):
         print 'gs', self.name
+
+    def _bt_copy_to_selection_changed(self):
+        if self.ref is not None:
+            for r in tree_panel.node_selection:
+                r.selection.counts = self.ref.selection.counts
 
     def _region_select(self):
         # Update SelectorPanel
@@ -276,7 +289,6 @@ class TreePanel(HasTraits):
             for r in self.specs_regions:
                 r.selection.region_cycle(counts_only=True)
 
-
     def _region_dclick(self):
         '''
         Double-clicking a node cycles through selection states of subordinate channels
@@ -285,7 +297,6 @@ class TreePanel(HasTraits):
         for s in tree_panel.node_selection:
             s.icon = 'none'
         tree_panel._cycle_region_key(info=None)
-
 
     def _cycle_region_key(self, info):
         for n in self.node_selection:
@@ -299,12 +310,10 @@ class TreePanel(HasTraits):
             else:
                 self.set_node_icon('none')
 
-
     def set_node_icon(self, mode):
         for node in self.node_selection:
             node.icon = mode
         print mode
-
 
     def _toggle_key(self, info):
         for n in self.node_selection:
@@ -318,6 +327,13 @@ class TreePanel(HasTraits):
         for n in self.node_selection:
             n.selection.counts = False
 
+    class TreeHandler(Handler):
+        def _menu_set_as_reference(self, editor, obj):
+            ''' Sets the current tree node object as the source for copying state to
+            selected tree items.
+            '''
+            tree_panel.ref = obj
+            tree_panel.lb_ref = obj.name
 
     # View for objects that aren't edited
     no_view = View()
@@ -357,7 +373,8 @@ class TreePanel(HasTraits):
                       auto_open = True,
                       label     = 'label_name',
                       view      = no_view,
-                      menu      = Menu(),
+                      menu      = Menu(Action(name='Set as reference',
+                              action='handler._menu_set_as_reference(editor,object)')),
                       rename_me = False,
                       on_select = _region_select,
                       on_dclick = _region_dclick,
@@ -400,12 +417,21 @@ class TreePanel(HasTraits):
                             label = 'Data Export',
                             show_border = True,
                         ),
+                        VGroup(
+                            HGroup(
+                                UItem('bt_copy_to_selection', enabled_when='object._reference_set()'),
+                                UItem('lb_ref', style='readonly'),
+                            ),
+                            enabled_when = 'object._has_data()',
+                            label = 'Selection',
+                            show_border = True,
+                        ),
                         UItem(
                             name = 'specs_file',
                             editor = tree_editor,
                         ),
                         key_bindings = key_bindings,
-
+                        handler = TreeHandler(),
                     )
 
 
@@ -661,12 +687,12 @@ def get_name_num(series_name):
     return int(series_name.split('_')[-1])
 
 
-def is_bool_trait(object, t):
+def is_bool_trait(obj, t):
     ''' Return true iff t evaluates to a bool when accessed as an attribute,
     such as a Bool trait 
     '''
     try:
-        return type(object.__getattribute__(t)) is bool
+        return type(obj.__getattribute__(t)) is bool
     except AttributeError:
         return False
 
@@ -695,9 +721,8 @@ class SelectorPanel(HasTraits):
     cycle_channel_counts_state = Enum('all_on', 'all_off')('all_off')
     cycle_extended_channels_state = Enum('all_on', 'all_off')('all_off')
     plots = {}
-    bt_cycle_channel_counts = Button('Toggle')
-    bt_cycle_extended_channels = Button('Toggle')
-    bt_to_selection = Button('To selection')
+    bt_cycle_channel_counts = Button('All on/off')
+    bt_cycle_extended_channels = Button('All on/off')
 
     def __init__(self, region=None, **traits):
         super(SelectorPanel, self).__init__(**traits)   # HasTraits.__init__(self, **traits)
@@ -743,8 +768,7 @@ class SelectorPanel(HasTraits):
             group = HGroup()
             group.content = []
             group.content.append(Item('counts', label='Counts'))
-            group.content.append(UItem('bt_to_selection'))
-            group.label = 'Counts'
+#            group.label = 'Counts'
             group.show_border = True
             group1.content.append(group)
 
@@ -769,13 +793,11 @@ class SelectorPanel(HasTraits):
                 group.show_border = True
                 group.label = 'Extended Channels'
                 group1.content.append(group)
+
+            group1.label = self.region.name
+            group1.show_border = True
             items.append(group1)
         return View(*items)
-
-    def _bt_to_selection_changed(self):
-        for r in tree_panel.node_selection:
-            r.selection.counts = self.counts
-            print r.selection.counts
 
     def _counts_changed(self, trait, old, new):
         ''' Trait event handler
