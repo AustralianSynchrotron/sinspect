@@ -38,14 +38,20 @@ class SPECSRegion(HasTraits):
     # export filename etc.
     name = Str('<unknown>')
     region = Instance(specs.SPECSRegion)    # The reference to the contained region object
+    group = Instance('SPECSGroup')          # A reference to the containing group
     selection = Instance('SelectorPanel')   # A string argument here allows a forward reference
 
-    def __init__(self, name, region, **traits):
+    def __init__(self, name, region, group, **traits):
+        ''' name is a string with the name of the region
+        region is a specs.SPECSRegion instance
+        '''
         super(SPECSRegion, self).__init__(**traits) # HasTraits.__init__(self, **traits)
         self.name = name
         self.label_name = '  {}'.format(name) # initialise label to this
+        self.zero_fill_empty_channels(region)
         self.region = region
-        # Add a reference to the specs.SPECSRegion object in case we want access to its
+        self.group = group
+        # Add a reference within the specs.SPECSRegion object in case we want access to its
         # Traited SPECSRegion owner
         self.region.owner = self
         self.selection = SelectorPanel(self)
@@ -53,6 +59,22 @@ class SPECSRegion(HasTraits):
         # Setting self.selection.counts=True now triggers a trait change event which
         # triggers creation of the related plot series
         # self.selection.counts = True
+
+    def zero_fill_empty_channels(self, region):
+        ''' Sometimes the underlying specs.SPECSRegion object contains None to
+        indicate that no channel data is available. Here we replace any None channels
+        with a zero-filled array in the underlying object
+        '''
+        CHANNELS = 9
+        c = region.channel_counts
+        if c is None:
+            region.channel_counts = np.zeros((region.counts.size, CHANNELS))
+        elif c.size == 0:
+            # channel is empty. Just change its label for the moment
+            self.label_name = '  {} (empty)'.format(self.name)
+        c = region.extended_channels
+        if c is None:
+            region.extended_channels = np.zeros((region.counts.size, CHANNELS))
 
     def get_x_axis(self):
         ''' Return x-axis data based on the scan_mode metadata '''
@@ -71,27 +93,35 @@ class SPECSRegion(HasTraits):
     def _get_label(self):
         ''' Return a string with the name taken from the the underlying sepcs.SPECSRegion
         object prepended by an indicator of the checked status as follows:
-        no   channels selected: space, space, name
-        some channels selected:     -, space, name
-        all  channels selected:     +, space, name
+        counts channels selected:                             *, space, name
+        counts channels not selected but others are selected: -, space, name
+        no     channels selected:                             space, space, name
         '''
-        # get state of channels
         s = self.selection
+        # see whether a region is empty
+        if s.region.region.channel_counts.size == 0:
+            empty_indicator = ' (empty)'
+        else:
+            empty_indicator = ''
+
+        # get state of channels
         bool_states = dict([(i, s.__getattribute__(i))
             for i in s._instance_traits().keys()
             if is_bool_trait(s, i)])
+        # Get sets of all the T & F channel_counts and extended_channels states,
+        # i.e. end up with a set {}, {T}, {F}, or {T,F}
         channel_counts_states = {val for key,val in bool_states.iteritems()
                                  if get_name_body(key)=='channel_counts'}
         extended_channels_states = {val for key,val in bool_states.iteritems()
                                  if get_name_body(key)=='extended_channels'}
         if bool_states['counts']:
-            label = '* {}'.format(self.name)
+            label = '* {}{}'.format(self.name, empty_indicator)
         #elif True in channel_counts_states and False in channel_counts_states:
-        #    label = '+ {}'.format(self.name)
+        #    label = '+ {}{}'.format(self.name, empty_indicator)
         elif True in channel_counts_states or True in extended_channels_states:
-            label = '- {}'.format(self.name)
+            label = '- {}{}'.format(self.name, empty_indicator)
         else:
-            label = '  {}'.format(self.name)
+            label = '  {}{}'.format(self.name, empty_indicator)
         return label
 
 
@@ -134,7 +164,8 @@ class SpecsFile(HasTraits):
             uniquify_region_gen = self._uniquify_names(region_names)
             # Now create our Traited SPECSRegion objects
             for region in group.regions:
-                specs_group.specs_regions.append(SPECSRegion(name=uniquify_region_gen.next(), region=region))
+                specs_group.specs_regions.append(SPECSRegion(name=uniquify_region_gen.next(),
+                                                        region=region, group=specs_group))
             self.specs_groups.append(specs_group)
         return self
 
@@ -260,7 +291,8 @@ class TreePanel(HasTraits):
         return self.lb_ref is not ''
 
     def _group_select(self):
-        print 'gs', self.name
+#        print 'gs', self.name
+        pass
 
     def _bt_copy_to_selection_changed(self):
         if self.ref is not None:
@@ -271,8 +303,8 @@ class TreePanel(HasTraits):
         # Update SelectorPanel
         main_app.selector_panel = self.selection
         #TODO: call _update_last_selection(self) on anything not in current node_selection
-        print main_app.tree_panel.node_selection
-        print 'rs', self.name
+#        print main_app.tree_panel.node_selection
+#        print 'rs', self.name
 
     def _group_dclick(self):
         '''
@@ -296,11 +328,12 @@ class TreePanel(HasTraits):
         '''
         for s in tree_panel.node_selection:
             s.icon = 'none'
-        tree_panel._cycle_region_key(info=None)
+        tree_panel._cycle_region_key()
 
-    def _cycle_region_key(self, info):
+    def _cycle_region_key(self, info=None):
         for n in self.node_selection:
             n.selection.region_cycle()
+            '''
             state = n.selection.get_trait_states()
             channel_counts_states = {val for key,val in state.iteritems() if get_name_body(key)=='channel_counts'}
             if True in channel_counts_states and False in channel_counts_states:
@@ -309,15 +342,19 @@ class TreePanel(HasTraits):
                 self.set_node_icon('all')
             else:
                 self.set_node_icon('none')
+            '''
 
     def set_node_icon(self, mode):
         for node in self.node_selection:
             node.icon = mode
-        print mode
 
     def _toggle_key(self, info):
         for n in self.node_selection:
-            n.selection.counts = not n.selection.counts
+            if isinstance(n, SPECSRegion):
+                n.selection.counts = not n.selection.counts
+            elif isinstance(n, SPECSGroup):
+                for r in n.specs_regions:
+                    r.selection.counts = not r.selection.counts
 
     def _select_key(self, info):
         for n in self.node_selection:
@@ -804,9 +841,9 @@ class SelectorPanel(HasTraits):
         The counts checkbox was toggled
         '''
         if new:
-            self._add_plot(self.region.name, trait)
+            self._add_plot(self.region, trait)
         else:
-            self._remove_plot(self.region.name, trait)
+            self._remove_plot(self.region, trait)
         self.region.update_label()
 
     @on_trait_change('channel_counts_+, extended_channels_+')
@@ -815,20 +852,21 @@ class SelectorPanel(HasTraits):
         A channel_counts_n or extended_channels_n checkbox was toggled
         '''
         if new:
-            self._add_plot(self.region.name, trait, get_name_num(trait))
+            self._add_plot(self.region, trait, get_name_num(trait))
         else:
-            self._remove_plot(self.region.name, trait)
+            self._remove_plot(self.region, trait)
         self.region.update_label()
 
-    def _name_plot(self, region_name, series_name):
-        ''' Make a unique name based on the region_name and series_name parts
-        which together are assumed to form a unique pair
+    def _name_plot(self, region, series_name):
+        ''' Make a unique name based on the group_name, region_name and series_name parts
+        which together form a unique triple because we enforced uniqueness when reading
+        the data
         '''
-        return '{}_{}'.format(region_name, series_name)
+        return '{}_{}_{}'.format(region.group.name, region.name, series_name)
 
-    def _add_plot(self, region_name, series_name, column=None):
+    def _add_plot(self, region, series_name, column=None):
         ''' Adds a plot to the chaco plot widget. '''
-        name = self._name_plot(region_name, series_name)
+        name = self._name_plot(region, series_name)
         xs = self.region.get_x_axis()
         if series_name == 'counts':
             ys = self.region.region.__getattribute__(series_name)
@@ -846,9 +884,9 @@ class SelectorPanel(HasTraits):
             }[series_name]
         plot_panel.add_plot(name, xs, ys, **line_attributes)
 
-    def _remove_plot(self, region_name, series_name):
+    def _remove_plot(self, region, series_name):
         ''' Call plot widget to remove it and delete the reference here. '''
-        name = self._name_plot(region_name, series_name)
+        name = self._name_plot(region, series_name)
         plot_panel.remove_plot(name)
 
     def get_trait_states(self):
