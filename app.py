@@ -8,8 +8,7 @@ from traits.api import Str, Bool, Enum, List, Dict, Any, \
 from traitsui.api import View, Group, HGroup, VGroup, HSplit, \
     Item, UItem, TreeEditor, TreeNode, Menu, Action, Handler
 from traitsui.key_bindings import KeyBinding, KeyBindings
-from pyface.api import ImageResource, DirectoryDialog, OK
-from enthought.pyface.api import GUI
+from pyface.api import ImageResource, DirectoryDialog, OK, GUI
 from fixes import fix_background_color
 from chaco.api import Plot, ArrayPlotData, PlotAxis, \
     add_default_axes, add_default_grids
