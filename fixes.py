@@ -1,4 +1,4 @@
-from enthought.etsconfig.api import ETSConfig
+from traits.etsconfig.api import ETSConfig
 
 
 def fix_background_color():

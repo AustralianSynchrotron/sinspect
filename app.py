@@ -412,8 +412,7 @@ class TreePanel(HasTraits):
     )
 
     key_bindings = KeyBindings(
-        KeyBinding( binding1    = 'Space',
-                    binding2    = 't',
+        KeyBinding( binding1    = 't',
                     description = 'Toggle Selection',
                     method_name = '_toggle_key' ),
         KeyBinding( binding1    = '+',
@@ -423,7 +422,8 @@ class TreePanel(HasTraits):
         KeyBinding( binding1    = '-',
                     description = 'Deselect',
                     method_name = '_deselect_key' ),
-        KeyBinding( binding1    = 'r',
+        KeyBinding( binding1    = 'Space',
+                    binding2    = 'r',
                     description = 'Cycle region',
                     method_name = '_cycle_region_key' ),
     )
@@ -761,7 +761,7 @@ class SelectorPanel(HasTraits):
     name = Str('<unknown>')
     region = Instance(SPECSRegion)
     last_selection = Dict   # stores counts and channel traits whenever a checkbox is clicked
-    cycle_state = Enum('counts_only', 'all_on', 'all_off')
+    cycle_state = Enum('channels_on', 'counts_on', 'all_on')
     cycle_channel_counts_state = Enum('all_on', 'all_off')('all_on')
     cycle_extended_channels_state = Enum('all_on', 'all_off')('all_off')
     plots = {}
@@ -792,7 +792,7 @@ class SelectorPanel(HasTraits):
         # Now we've created all the Bool/checkbox traits default_traits_view() can
         # create a view for them.
 
-        self.cycle_state = 'counts_only'
+        self.cycle_state = 'channels_on'
 
     def default_traits_view(self):
         '''
@@ -973,31 +973,39 @@ class SelectorPanel(HasTraits):
         if all_off:
             self.trait_set(**{i: False for i in self._instance_traits()
                               if is_bool_trait(self, i)})
-            self.cycle_state = 'all_off'
+            self.cycle_state = 'channels_on'
             return
 
         if counts_only:
-            self.trait_set(**{i: False for i in self._instance_traits()
-                              if is_bool_trait(self, i)})
+            self.trait_set(**{i: True for i in self._instance_traits()
+                              if get_name_body(i)=='channel_counts'})
             self.counts = True
-            self.cycle_state = 'counts_only'
+            self.cycle_state = 'counts_on'
             return
 
-        if self.cycle_state == 'counts_only':
+        if self.cycle_state == 'counts_on':
             self.trait_set(**{i: True for i in self._instance_traits()
                               if is_bool_trait(self, i)})
             self.cycle_state = 'all_on'
         elif self.cycle_state == 'all_on':
             self.trait_set(**{i: False for i in self._instance_traits()
                               if is_bool_trait(self, i)})
-            self.cycle_state = 'all_off'
-        else:
+            self.trait_set(**{i: True for i in self._instance_traits()
+                              if get_name_body(i)=='channel_counts'})
+            self.cycle_state = 'channels_on'
+        else:                                       # channels_on
+            self.trait_set(**{i: True for i in self._instance_traits()
+                              if get_name_body(i)=='channel_counts'})
             self.counts = True
-            self.cycle_state = 'counts_only'
+            self.cycle_state = 'counts_on'
 
     def _bt_cycle_channel_counts_changed(self):
         ''' Toggle the state of the counts channels
         '''
+        channel_counts_states = self.get_channel_counts_states().values()
+        if (False in channel_counts_states) and (True in channel_counts_states):
+            self.cycle_channel_counts_state = 'all_off'
+
         if self.cycle_channel_counts_state == 'all_on':
             self.trait_set(**{i: False for i in self._instance_traits()
                               if get_name_body(i)=='channel_counts'})
@@ -1010,6 +1018,10 @@ class SelectorPanel(HasTraits):
     def _bt_cycle_extended_channels_changed(self):
         ''' Toggle the state of the counts channels
         '''
+        extended_channels_states = self.get_extended_channels_states().values()
+        if (False in extended_channels_states) and (True in extended_channels_states):
+            self.cycle_extended_channels_state = 'all_off'
+
         if self.cycle_extended_channels_state == 'all_on':
             self.trait_set(**{i: False for i in self._instance_traits()
                               if get_name_body(i)=='extended_channels'})
@@ -1057,6 +1069,12 @@ Right drag = Pan the plot <br>
 Right click = Undo zoom <br>
 Esc = Reset zoom/pan <br>
 Mousewheel = Zoom in/out <br>
+
+<h5>Keyboard shortcuts for tree selections</h5>
+t        Toggle Selection
++,=      Select
+-        Deselect
+Space,r  Cycle region',
 
 <h5>About the software</h5>
 
