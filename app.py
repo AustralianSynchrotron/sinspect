@@ -9,6 +9,7 @@ from traitsui.api import View, Group, HGroup, VGroup, HSplit, \
     Item, UItem, TreeEditor, TreeNode, Menu, Action, Handler
 from traitsui.key_bindings import KeyBinding, KeyBindings
 from pyface.api import ImageResource, DirectoryDialog, OK
+from enthought.pyface.api import GUI
 from fixes import fix_background_color
 from chaco.api import Plot, ArrayPlotData, PlotAxis, \
     add_default_axes, add_default_grids
@@ -16,6 +17,7 @@ from chaco.tools.api import PanTool, ZoomTool
 from chaco.tools.tool_states import PanState
 from ui_helpers import get_file_from_dialog
 import specs
+import wx
 
 
 # Linux/Ubuntu themes cause the background of windows to be ugly and dark
@@ -104,22 +106,16 @@ class SPECSRegion(HasTraits):
         else:
             empty_indicator = ''
 
-        # get state of channels
-        bool_states = dict([(i, s.__getattribute__(i))
-            for i in s._instance_traits().keys()
-            if is_bool_trait(s, i)])
+        # get state of counts checkbox
+        counts_state = s.get_trait_states()['counts']
         # Get sets of all the T & F channel_counts and extended_channels states,
         # i.e. end up with a set {}, {T}, {F}, or {T,F}
-        channel_counts_states = {val for key,val in bool_states.iteritems()
-                                 if get_name_body(key)=='channel_counts'}
-        extended_channels_states = {val for key,val in bool_states.iteritems()
-                                 if get_name_body(key)=='extended_channels'}
-        if bool_states['counts']:
-            label = '* {}{}'.format(self.name, empty_indicator)
-        #elif True in channel_counts_states and False in channel_counts_states:
-        #    label = '+ {}{}'.format(self.name, empty_indicator)
-        elif True in channel_counts_states or True in extended_channels_states:
-            label = '- {}{}'.format(self.name, empty_indicator)
+        channel_counts_states = s.get_channel_counts_states().values()
+        if counts_state:
+            if False not in channel_counts_states:
+                label = '* {}{}'.format(self.name, empty_indicator)
+            else:
+                label = '+ {}{}'.format(self.name, empty_indicator)
         else:
             label = '  {}{}'.format(self.name, empty_indicator)
         return label
@@ -174,14 +170,14 @@ class TreePanel(HasTraits):
     specs_file = Instance(SpecsFile)
     file_path = Str(None)
     most_recent_path = Str('')
+    # When a selection is made this holds a list of references to selected tree nodes
     node_selection = Any()
-#    # When a selection is made this gets a reference to the selected tree node instance
-#    node_selection = Instance(HasTraits)
 
     # Buttons in the widget group above the tree area
     bt_open_file = Button('Open file...')
     bt_export_file = Button('Export...')
-    bt_copy_to_selection = Button('Copy From Ref:')
+    #bt_set_as_reference = Button('Set Ref')
+    bt_copy_to_selection = Button('Paste Ref:')
     lb_ref = Str('')
     ref = Instance(SPECSRegion)
     cb_header = Bool(True)
@@ -203,13 +199,19 @@ class TreePanel(HasTraits):
         plot_panel.remove_all_plots()
 
         self.name = self.file_path
-        self.specs_file = SpecsFile().open(self.file_path)
+        try:
+            GUI.set_busy()                      # set hourglass @UndefinedVariable
+            self.specs_file = SpecsFile().open(self.file_path)
+        except:
+            pass
+        GUI.set_busy(False)                     # reset hourglass @UndefinedVariable
 
     def _bt_export_file_changed(self):
         ''' Event handler
         Called when the user clicks the Export... button
         '''
-        dlg = DirectoryDialog(default_path=self.most_recent_path)
+        myFrame = wx.GetApp().GetTopWindow()
+        dlg = DirectoryDialog(default_path=self.most_recent_path, parent=myFrame, style='modal')
         if dlg.open() == OK:
             self.most_recent_path = dlg.path
 
@@ -218,50 +220,41 @@ class TreePanel(HasTraits):
                 dir_created_for_this_group = False
                 for r in g.specs_regions:
                     # make file region.name+'.xy' in directory g.name
-                    print g.name, r.name
+                    # print g.name, r.name
                     # Column data contains the following in left-to-right order:
                     # x-axis, counts, channel_counts_n and extended_channels_n
 
                     # x-axis
                     a = [r.get_x_axis()]
-                    h = {'FixedAnalyzerTransmission':'"Binding Axis"',
-                         'ConstantFinalState'       :'"Excitation Axis"',
-                        }.get(r.region.scan_mode,    '"Kinetic Axis"')
+                    h = '#'
+                    h += {'FixedAnalyzerTransmission':'"Binding Axis"',
+                          'ConstantFinalState'       :'"Excitation Axis"',
+                         }.get(r.region.scan_mode,    '"Kinetic Axis"')
                     delimiter = {'space':' ', 'comma':',', 'tab':'\t'}[self.delimiter]
                     any_checked = False
 
                     if r.selection.counts:
                         # counts
                         a.append(r.region.counts)
-                        h += '{}Counts'.format(delimiter)
+                        cc_dict = r.selection.get_channel_counts_states()
+                        # make a string indicating the channel_counts columns summed to
+                        # obtain the counts column  
+                        counts_label = '+'.join([str(get_name_num(i))
+                                                 for i in sorted(cc_dict) if cc_dict[i]])
+                        h += '{}"Counts {}"'.format(delimiter, counts_label)
                         any_checked = True
 
                         # channel_counts_n
-                        for name in sorted(r.selection._instance_traits()):
-                            if 'channel_counts_' in name:
-                                channel_num = get_name_num(name)
-                                a.append(r.region.channel_counts[:,channel_num-1])
-                                h += '{}"Channel {} counts"'.format(delimiter, channel_num)
+                        for name in sorted(r.selection.get_channel_counts_states()):
+                            channel_num = get_name_num(name)
+                            a.append(r.region.channel_counts[:,channel_num-1])
+                            h += '{}"Channel {} counts"'.format(delimiter, channel_num)
 
                         # extended_channels_n
-                        for name in sorted(r.selection._instance_traits()):
-                            if 'extended_channels_' in name:
-                                channel_num = get_name_num(name)
-                                a.append(r.region.extended_channels[:,channel_num-1])
-                                h += '{}"Extended channel {}"'.format(delimiter, channel_num)
-                    '''
-                    # channel_counts_n
-                    for name, enabled in sorted(r.selection.get_trait_states().iteritems()):
-                        if enabled and ('channel_counts_' in name):
-                            a.append(r.region.channel_counts[:,get_name_num(name)-1])
-                            any_checked = True
-
-                    # extended_channels_n
-                    for name, enabled in sorted(r.selection.get_trait_states().iteritems()):
-                        if enabled and ('extended_channels_' in name):
-                            a.append(r.region.extended_channels[:,get_name_num(name)-1])
-                            any_checked = True
-                    '''
+                        for name in sorted(r.selection.get_extended_channels_states()):
+                            channel_num = get_name_num(name)
+                            a.append(r.region.extended_channels[:,channel_num-1])
+                            h += '{}"Extended channel {}"'.format(delimiter, channel_num)
 
                     # Write it
                     if any_checked:
@@ -273,7 +266,7 @@ class TreePanel(HasTraits):
                                 dir_created_for_this_group = True
                             except OSError:
                                 # Something exists already, or it can't be written
-                                #TODO: Give a nice message here
+                                # Maybe give a nice message here
                                 pass
 
                         filename = os.path.join(dirname, r.name+'.xy')
@@ -281,8 +274,8 @@ class TreePanel(HasTraits):
                             if self.cb_header:
                                 print >> f, h
                             a = np.array(a).transpose()
-                            #TODO: what format and newline character are we using here?
                             np.savetxt(f, a, delimiter=delimiter)
+                            print filename, 'written'
 
     def _has_data(self):
         return self.file_path is not None
@@ -291,20 +284,25 @@ class TreePanel(HasTraits):
         return self.lb_ref is not ''
 
     def _group_select(self):
-#        print 'gs', self.name
+        # print 'gs', self.name
         pass
 
     def _bt_copy_to_selection_changed(self):
         if self.ref is not None:
+            trait_dict = self.ref.selection.get_trait_states()
             for r in tree_panel.node_selection:
-                r.selection.counts = self.ref.selection.counts
+                if isinstance(r, SPECSRegion):
+                    # paste all counts, channel_counts_ and extended_channels_ states
+                    r.selection.set(**trait_dict)
 
     def _region_select(self):
         # Update SelectorPanel
         main_app.selector_panel = self.selection
-        #TODO: call _update_last_selection(self) on anything not in current node_selection
-#        print main_app.tree_panel.node_selection
-#        print 'rs', self.name
+
+        # Remove current plots from the plot window foreground layer
+        plot_panel.remove_all_plots(draw_layer='foreground')
+        # Add any checked counts and channels to the plot window foreground layer
+        self.selection.plot_checkbox_states()
 
     def _group_dclick(self):
         '''
@@ -333,16 +331,6 @@ class TreePanel(HasTraits):
     def _cycle_region_key(self, info=None):
         for n in self.node_selection:
             n.selection.region_cycle()
-            '''
-            state = n.selection.get_trait_states()
-            channel_counts_states = {val for key,val in state.iteritems() if get_name_body(key)=='channel_counts'}
-            if True in channel_counts_states and False in channel_counts_states:
-                self.set_node_icon('some')
-            elif True in channel_counts_states:
-                self.set_node_icon('all')
-            else:
-                self.set_node_icon('none')
-            '''
 
     def set_node_icon(self, mode):
         for node in self.node_selection:
@@ -385,11 +373,11 @@ class TreePanel(HasTraits):
                       view      = no_view,
                       add       = [SPECSGroup],
                       menu      = Menu(),
-#                      on_dclick = _bt_open_file_changed,
+                      #on_dclick = _bt_open_file_changed,
                       rename_me = False,
                       icon_path = 'resources',
-#                      icon_open = 'file.ico',
-#                      icon_group = 'file.ico',
+                      #icon_open = 'file.ico',
+                      #icon_group = 'file.ico',
                     ),
 
             TreeNode( node_for  = [SPECSGroup],
@@ -403,7 +391,7 @@ class TreePanel(HasTraits):
                       on_select = _group_select,
                       on_dclick = _group_dclick,
                       icon_path = 'resources',
-#                      icon_open = 'group.ico',
+                      #icon_open = 'group.ico',
                     ),
 
             TreeNode( node_for  = [SPECSRegion],
@@ -416,7 +404,7 @@ class TreePanel(HasTraits):
                       on_select = _region_select,
                       on_dclick = _region_dclick,
                       icon_path = 'resources',
-#                      icon_item = 'region.ico',
+                      #icon_item = 'region.ico',
                     )
         ],
         editable = False,           # suppress the editor pane as we are using the separate Chaco pane for this
@@ -459,7 +447,6 @@ class TreePanel(HasTraits):
                                 UItem('bt_copy_to_selection', enabled_when='object._reference_set()'),
                                 UItem('lb_ref', style='readonly'),
                             ),
-                            enabled_when = 'object._has_data()',
                             label = 'Selection',
                             show_border = True,
                         ),
@@ -490,16 +477,15 @@ class PanToolWithHistory(PanTool):
     def _end_pan(self, event):
         super(PanToolWithHistory, self)._end_pan(event)
         if self.history_tool is not None:
-            # Only append to the undo history if we have moved a significant
-            # amount. This avoids conflicts with the single-click undo
-            # function.
+            # Only append to the undo history if we have moved a significant amount. 
+            # This avoids conflicts with the single-click undo function.
             new_xy = np.array((event.x, event.y))
             old_xy = np.array(self._start_pan_xy)
             if any(abs(new_xy - old_xy) > 10):
-                next = self.history_tool.data_range_center()
+                current = self.history_tool.data_range_center()
                 prev = self._prev_state
-                if next != prev:
-                    self.history_tool.append_state(PanState(prev, next))
+                if current != prev:
+                    self.history_tool.append_state(PanState(prev, current))
 
 
 class ClickUndoZoomTool(ZoomTool):
@@ -583,47 +569,76 @@ class PlotPanel(HasTraits):
     '''
     plot_data = Instance(ArrayPlotData)
     plot = Instance(Plot)
+    LAYERS = ['background', 'foreground', 'highlight']
 
     def __init__(self, **traits):
         super(PlotPanel, self).__init__(**traits)   # HasTraits.__init__(self, **traits)
         self.plot_data = ArrayPlotData()
         self.plot = Plot(self.plot_data)
+
+        # Extend the plot panel's list of drawing layers
+        ndx = self.plot.draw_order.index('plot')
+        self.plot.draw_order[ndx:ndx] = self.LAYERS
+
         self.plot.value_range.low = 0               # fix y-axis min to 0
         self.plot.index_axis = PlotAxis(self.plot, orientation='bottom', title='Energy [eV]')
         self.plot.y_axis = PlotAxis(self.plot, orientation='left', title='Intensity [Counts]')
 
         # Now add a transparent 1st plot series that never gets removed
         # since if we remove the first instance via remove() the mapper and tools are also removed
-        plot = self.add_plot('tool_plot', [0], [0], bgcolor='white', color='transparent')
+        plot = self.add_plot('tool_plot', [0,1], [0,1], bgcolor='white', color='transparent')
         self.value_mapper, self.index_mapper = self._setup_plot_tools(plot)
 
-    def add_plot(self, name, xs, ys, **lineplot_args):
+    def add_plot(self, name, xs, ys, draw_layer='foreground', **lineplot_args):
+        name = '_'.join([draw_layer, name])
         self.plot_data.set_data(name+'_xs', xs)
         self.plot_data.set_data(name+'_ys', ys)
-        self.plot.plot((name+'_xs', name+'_ys'), name=name, type='line', **lineplot_args)
+        renderer = self.plot.plot((name+'_xs', name+'_ys'), name=name, type='line', **lineplot_args)[0]
+        renderer.set(draw_layer=draw_layer)
 
         self.plot.request_redraw()
         return self.plot
 
-    def remove_plot(self, name):
+    def remove_plot(self, name, draw_layer='foreground'):
         if name is 'tool_plot':
             # Never remove this one since the chaco tools are attached to it 
             return
-        self.plot_data.del_data(name+'_xs')
-        self.plot_data.del_data(name+'_ys')
-        self.plot.delplot(name)
+        if name.split('_')[0] not in self.LAYERS:
+            name = '_'.join([draw_layer, name])
+        try:
+            self.plot_data.del_data(name+'_xs')
+            self.plot_data.del_data(name+'_ys')
+            self.plot.delplot(name)
+            # Invalidate the datasources as chaco maintains a cache:
+            # See http://thread.gmane.org/gmane.comp.python.chaco.user/658/focus=656
+            self.plot.datasources.clear()
+        except KeyError:
+            pass
         self.plot.request_redraw()
 
-    def remove_all_plots(self):
-        # Make sure we don't remove 'tool_plot'
-        for p in plot_panel.plot.plots.keys():
-            plot_panel.remove_plot(p)
+    def update_plot_data(self, name, data, x_or_y='y', draw_layer='foreground', **lineplot_args):
+        name = '_'.join([draw_layer, name])
+        xy_suffix = {'x':'_xs', 'y':'_ys'}[x_or_y]
+        self.plot_data.set_data(name+xy_suffix, data)
+        self.plot.request_redraw()
 
-    def get_plot(self, name):
+    def remove_all_plots(self, draw_layer=None):
+        ''' When draw_layer is None, removes all plots from all layers (except 'tool_plot'
+        which is never removed). Otherwise, removes all plots from the specified
+        draw_layer which is assumed to one of the values in the LAYERS list.
+        '''
+        for p in plot_panel.plot.plots.keys():
+            if (draw_layer is None) or (p.split('_')[0] == draw_layer):
+                plot_panel.remove_plot(p)
+
+    def get_plot(self, name, draw_layer=None):
         ''' Get a plot reference from the name '''
+        if draw_layer is not None:
+            name = '_'.join([draw_layer, name])
         return self.plot.plots[name][0]
 
-    def set_plot_attributes(self, name, **attributes):
+    def set_plot_attributes(self, name, draw_layer='foreground', **attributes):
+        name = '_'.join([draw_layer, name])
         try:
             for key, value in attributes.iteritems():
                 setattr(self.plot.plots[name][0], key, value)
@@ -633,7 +648,7 @@ class PlotPanel(HasTraits):
     def _setup_plot_tools(self, plot):
         ''' Sets up the background, and several tools on a plot '''
         # Make a white background with grids and axes
-        plot.bgcolor='transparent'
+        plot.bgcolor='white'
         add_default_grids(plot)
         add_default_axes(plot)
 
@@ -647,10 +662,6 @@ class PlotPanel(HasTraits):
 
         return plot.value_mapper, plot.index_mapper
 
-#    def _plot_default(self):
-#        return PlotPanel(padding=40, fill_padding=True,
-#                                     bgcolor="white", use_backbuffer=True)
-
     traits_view =   View(
                         UItem(
                             'plot',
@@ -660,8 +671,6 @@ class PlotPanel(HasTraits):
                         resizable=True,
                     )
 
-
-#TODO: Look at LineInspector and HighlightTool
 
 #class LineSelectionTool(BaseTool):
 #    ''' 
@@ -723,7 +732,6 @@ def get_name_num(series_name):
     '''
     return int(series_name.split('_')[-1])
 
-
 def is_bool_trait(obj, t):
     ''' Return true iff t evaluates to a bool when accessed as an attribute,
     such as a Bool trait 
@@ -755,7 +763,7 @@ class SelectorPanel(HasTraits):
     region = Instance(SPECSRegion)
     last_selection = Dict   # stores counts and channel traits whenever a checkbox is clicked
     cycle_state = Enum('counts_only', 'all_on', 'all_off')
-    cycle_channel_counts_state = Enum('all_on', 'all_off')('all_off')
+    cycle_channel_counts_state = Enum('all_on', 'all_off')('all_on')
     cycle_extended_channels_state = Enum('all_on', 'all_off')('all_off')
     plots = {}
     bt_cycle_channel_counts = Button('All on/off')
@@ -774,7 +782,7 @@ class SelectorPanel(HasTraits):
         if region.region.channel_counts is not None:
             channel_counts_len = region.region.channel_counts.shape[1]
             for i in range(channel_counts_len):
-                self.add_trait('channel_counts_{}'.format(i+1), Bool)
+                self.add_trait('channel_counts_{}'.format(i+1), Bool(True))
             # use self._instance_traits() to list these traits
 
         # create traits for each extended_channels_n checkbox
@@ -786,7 +794,6 @@ class SelectorPanel(HasTraits):
         # create a view for them.
 
         self.cycle_state = 'counts_only'
-
 
     def default_traits_view(self):
         '''
@@ -805,7 +812,6 @@ class SelectorPanel(HasTraits):
             group = HGroup()
             group.content = []
             group.content.append(Item('counts', label='Counts'))
-#            group.label = 'Counts'
             group.show_border = True
             group1.content.append(group)
 
@@ -846,10 +852,41 @@ class SelectorPanel(HasTraits):
             self._remove_plot(self.region, trait)
         self.region.update_label()
 
-    @on_trait_change('channel_counts_+, extended_channels_+')
+    @on_trait_change('channel_counts_+')
     def _channel_counts_x_changed(self, container, trait, new):
         ''' Trait event handler
-        A channel_counts_n or extended_channels_n checkbox was toggled
+        A channel_counts_n checkbox was toggled
+        '''
+        # add or remove the channel counts plot from screen
+        if new:
+            self._add_plot(self.region, trait, get_name_num(trait))
+        else:
+            self._remove_plot(self.region, trait)
+
+        # recompute counts
+        # channel_counts is an n-column (n=9) x m-row array
+        # make a mask corresponding to the checkbox state then sum the corresponding columns
+        cc_dict = self.get_channel_counts_states()
+        mask = np.array([cc_dict[i] for i in sorted(cc_dict)])
+        self.region.region.counts = self.region.region.channel_counts[:,mask].sum(axis=1)
+
+        # update the counts series plot data
+        # This is done by toggling the counts plot off and on again if it is currently on
+        # I tried this by directly updating the counts y-data which should trigger a chaco
+        # update, but there seems to be a bug in chaco that makes updating the 
+        # series flaky - it doesn't always update the plot. This way works by triggering
+        # the _counts_changed() event
+        if self.counts:
+            self.counts = False
+            self.counts = True
+        
+        # update the tree label to indicate the selection
+        self.region.update_label()
+
+    @on_trait_change('extended_channels_+')
+    def _extended_channels_x_changed(self, container, trait, new):
+        ''' Trait event handler
+        An extended_channels_n checkbox was toggled
         '''
         if new:
             self._add_plot(self.region, trait, get_name_num(trait))
@@ -862,14 +899,14 @@ class SelectorPanel(HasTraits):
         which together form a unique triple because we enforced uniqueness when reading
         the data
         '''
-        return '{}_{}_{}'.format(region.group.name, region.name, series_name)
+        return '_'.join([region.group.name, region.name, series_name])
 
     def _add_plot(self, region, series_name, column=None):
         ''' Adds a plot to the chaco plot widget. '''
         name = self._name_plot(region, series_name)
         xs = self.region.get_x_axis()
         if series_name == 'counts':
-            ys = self.region.region.__getattribute__(series_name)
+            ys = self.region.region.counts
         else:
             # Get 'first_second' part of the name 'first_second_n' which will either be
             # 'channel_counts' or 'extended_channels'. Then use this to retrieve the
@@ -889,48 +926,71 @@ class SelectorPanel(HasTraits):
         name = self._name_plot(region, series_name)
         plot_panel.remove_plot(name)
 
+    def plot_checkbox_states(self):
+        ''' Add plots to the default (foreground) layer reflecting the checkbox states
+        '''
+        trait_dict = self.get_trait_states()
+        for trait, val in trait_dict.iteritems():
+            if val:
+                # counts
+                if trait=='counts':
+                    self._add_plot(self.region, trait)
+                else:
+                    # channel_counts_+, extended_channels_+
+                    self._add_plot(self.region, trait, get_name_num(trait))
+
     def get_trait_states(self):
-        ''' Return a dictionary of trait_name:value entries associated with this
-        selector panel.
+        ''' Return a dictionary of all trait_name:value entries with associated
+        checkboxes in this selector panel.
         '''
         # I don't know how to evaluate the trait values directly from _instance_traits()
         # so I use it to get the names then use __getattribute__() to evaluate them.
-        return dict([(i, self.__getattribute__(i))
-                    for i in self._instance_traits().keys()
-                    if is_bool_trait(self, i)])
+        trait_dict = {i: self.__getattribute__(i)
+                      for i in self._instance_traits()
+                      if is_bool_trait(self, i)}
+        return trait_dict
 
-    def _update_last_selection(self):
-        self.last_selection = dict([(i, self.__getattribute__(i))
-                    for i in self._instance_traits().keys()
-                    if is_bool_trait(self, i)])
+    def get_channel_counts_states(self):
+        ''' Return a dictionary of trait_name:value entries associated with the
+        channel_counts_ checkboxes in the selector panel.
+        '''
+        trait_dict = {i: self.__getattribute__(i)
+                      for i in self._instance_traits()
+                      if get_name_body(i)=='channel_counts'}
+        return trait_dict
+
+    def get_extended_channels_states(self):
+        ''' Return a dictionary of trait_name:value entries associated with the
+        extended_channels_ checkboxes in the selector panel.
+        '''
+        trait_dict = {i: self.__getattribute__(i)
+                      for i in self._instance_traits()
+                      if get_name_body(i)=='extended_channels'}
+        return trait_dict
 
     def region_cycle(self, all_off=False, counts_only=False):
         ''' Cycle the state of the selected channels
         '''
         if all_off:
-            self.trait_set(**dict([(i, False)
-                    for i in self._instance_traits().keys()
-                    if is_bool_trait(self, i)]))
+            self.trait_set(**{i: False for i in self._instance_traits()
+                              if is_bool_trait(self, i)})
             self.cycle_state = 'all_off'
             return
 
         if counts_only:
-            self.trait_set(**dict([(i, False)
-                    for i in self._instance_traits().keys()
-                    if is_bool_trait(self, i)]))
+            self.trait_set(**{i: False for i in self._instance_traits()
+                              if is_bool_trait(self, i)})
             self.counts = True
             self.cycle_state = 'counts_only'
             return
 
         if self.cycle_state == 'counts_only':
-            self.trait_set(**dict([(i, True)
-                    for i in self._instance_traits().keys()
-                    if is_bool_trait(self, i)]))
+            self.trait_set(**{i: True for i in self._instance_traits()
+                              if is_bool_trait(self, i)})
             self.cycle_state = 'all_on'
         elif self.cycle_state == 'all_on':
-            self.trait_set(**dict([(i, False)
-                    for i in self._instance_traits().keys()
-                    if is_bool_trait(self, i)]))
+            self.trait_set(**{i: False for i in self._instance_traits()
+                              if is_bool_trait(self, i)})
             self.cycle_state = 'all_off'
         else:
             self.counts = True
@@ -940,28 +1000,24 @@ class SelectorPanel(HasTraits):
         ''' Toggle the state of the counts channels
         '''
         if self.cycle_channel_counts_state == 'all_on':
-            self.trait_set(**dict([(i, False)
-                    for i in self._instance_traits().keys()
-                    if get_name_body(i)=='channel_counts']))
+            self.trait_set(**{i: False for i in self._instance_traits()
+                              if get_name_body(i)=='channel_counts'})
             self.cycle_channel_counts_state = 'all_off'
         else:
-            self.trait_set(**dict([(i, True)
-                    for i in self._instance_traits().keys()
-                    if get_name_body(i)=='channel_counts']))
+            self.trait_set(**{i: True for i in self._instance_traits()
+                              if get_name_body(i)=='channel_counts'})
             self.cycle_channel_counts_state = 'all_on'
 
     def _bt_cycle_extended_channels_changed(self):
         ''' Toggle the state of the counts channels
         '''
         if self.cycle_extended_channels_state == 'all_on':
-            self.trait_set(**dict([(i, False)
-                    for i in self._instance_traits().keys()
-                    if get_name_body(i)=='extended_channels']))
+            self.trait_set(**{i: False for i in self._instance_traits()
+                              if get_name_body(i)=='extended_channels'})
             self.cycle_extended_channels_state = 'all_off'
         else:
-            self.trait_set(**dict([(i, True)
-                    for i in self._instance_traits().keys()
-                    if get_name_body(i)=='extended_channels']))
+            self.trait_set(**{i: True for i in self._instance_traits()
+                              if get_name_body(i)=='extended_channels'})
             self.cycle_extended_channels_state = 'all_on'
 
 
