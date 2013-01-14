@@ -181,6 +181,8 @@ class SPECSRegion(object):
                 self.scan_mode = elem[0].text
             elif elem.attrib['name'] == "dwell_time":
                 self.dwell_time = float(elem.text)
+            elif elem.attrib['name'] == "analyzer_lens":
+                self.analyzer_lens = elem.text
             elif elem.attrib['name'] == "scan_delta":
                 self.scan_delta = float(elem.text)
             elif elem.attrib['name'] == "excitation_energy":
