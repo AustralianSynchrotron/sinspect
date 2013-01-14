@@ -48,7 +48,7 @@ class SPECSRegion(HasTraits):
         '''
         super(SPECSRegion, self).__init__(**traits) # HasTraits.__init__(self, **traits)
         self.name = name
-        self.label_name = '  {}'.format(name) # initialise label to this
+        self.label_name = '* {}'.format(name) # initialise label to this
         self.zero_fill_empty_channels(region)
         self.region = region
         self.group = group
@@ -92,7 +92,7 @@ class SPECSRegion(HasTraits):
         self.label_name = self._get_label()
 
     def _get_label(self):
-        ''' Return a string with the name taken from the the underlying sepcs.SPECSRegion
+        ''' Return a string with the name taken from the the underlying specs.SPECSRegion
         object prepended by an indicator of the checked status as follows:
         counts channels selected:                             *, space, name
         counts channels not selected but others are selected: -, space, name
@@ -199,11 +199,11 @@ class TreePanel(HasTraits):
 
         self.name = self.file_path
         try:
-            GUI.set_busy()                      # set hourglass @UndefinedVariable
+            GUI.set_busy()                      # set hourglass         @UndefinedVariable
             self.specs_file = SpecsFile().open(self.file_path)
         except:
             pass
-        GUI.set_busy(False)                     # reset hourglass @UndefinedVariable
+        GUI.set_busy(False)                     # reset hourglass       @UndefinedVariable
 
     def _bt_export_file_changed(self):
         ''' Event handler
@@ -273,7 +273,7 @@ class TreePanel(HasTraits):
                             if self.cb_header:
                                 print >> f, h
                             a = np.array(a).transpose()
-                            np.savetxt(f, a, delimiter=delimiter)
+                            np.savetxt(f, a, fmt='%1.8g', delimiter=delimiter)
                             print filename, 'written'
 
     def _has_data(self):
@@ -775,7 +775,7 @@ class SelectorPanel(HasTraits):
         self.region = region
 
         # create a trait for the counts checkbox
-        self.add_trait('counts', Bool)
+        self.add_trait('counts', Bool(True))
 
         # create traits for each channel_counts_n checkbox
         if region.region.channel_counts is not None:
@@ -792,7 +792,7 @@ class SelectorPanel(HasTraits):
         # Now we've created all the Bool/checkbox traits default_traits_view() can
         # create a view for them.
 
-        self.cycle_state = 'channels_on'
+        self.cycle_state = 'counts_on'
 
     def default_traits_view(self):
         '''
