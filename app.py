@@ -460,7 +460,7 @@ class TreePanel(HasTraits):
                     description = 'Deselect',
                     method_name = '_deselect_key' ),
         KeyBinding( binding1    = 'Space',
-                    binding2    = 'r',
+                    binding2    = 'c',
                     description = 'Cycle region',
                     method_name = '_cycle_region_key' ),
     )
@@ -1113,10 +1113,10 @@ Esc = Reset zoom/pan <br>
 Mousewheel = Zoom in/out <br>
 
 <h5>Keyboard shortcuts for tree selections</h5>
-t        Toggle Selection
 +,=      Select
 -        Deselect
-Space,r  Cycle region',
+t        Toggle counts
+Space,c  Cycle
 
 <h5>About the software</h5>
 
