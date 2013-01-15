@@ -223,25 +223,38 @@ class TreePanel(HasTraits):
                     # Column data contains the following in left-to-right order:
                     # x-axis, counts, channel_counts_n and extended_channels_n
 
-                    # x-axis
-                    a = [r.get_x_axis()]
-                    h = '#'
-                    h += {'FixedAnalyzerTransmission':'"Binding Axis"',
-                          'ConstantFinalState'       :'"Excitation Axis"',
-                         }.get(r.region.scan_mode,    '"Kinetic Axis"')
-                    delimiter = {'space':' ', 'comma':',', 'tab':'\t'}[self.delimiter]
-                    any_checked = False
-
                     if r.selection.counts:
-                        # counts
+                        # variable a holds the columnar count data. Start with the x-axis
+                        # then append counts, channel_counts and extended_channels as
+                        # appropriate
+                        a = [r.get_x_axis()]
                         a.append(r.region.counts)
                         cc_dict = r.selection.get_channel_counts_states()
                         # make a string indicating the channel_counts columns summed to
                         # obtain the counts column  
                         counts_label = '+'.join([str(get_name_num(i))
                                                  for i in sorted(cc_dict) if cc_dict[i]])
+                        delimiter = {'space':' ', 'comma':',', 'tab':'\t'}[self.delimiter]
+                        # Build header
+                        # First header line
+                        h = ''
+                        h += '#"'
+                        h += 'Analyzer mode:{}'.format(r.region.scan_mode)
+                        h += ', Dwell time:{}'.format(r.region.dwell_time)
+                        h += ', Pass energy:{}'.format(r.region.pass_energy)
+                        h += ', Lens mode:{}'.format(r.region.analyzer_lens)
+                        if r.region.scan_mode=='FixedAnalyzerTransmission':
+                            h += ', Excitation energy:{}'.format(r.region.excitation_energy)
+                        elif r.region.scan_mode=='ConstantFinalState':
+                            h += ', Kinetic energy:{}'.format(r.region.kinetic_energy)
+                        h += '"\n'
+
+                        # Second header line
+                        h += '#'
+                        h += {'FixedAnalyzerTransmission':'"Binding Axis"',
+                              'ConstantFinalState'       :'"Excitation Axis"',
+                             }.get(r.region.scan_mode,    '"Kinetic Axis"')
                         h += '{}"Counts {}"'.format(delimiter, counts_label)
-                        any_checked = True
 
                         # channel_counts_n
                         for name in sorted(r.selection.get_channel_counts_states()):
@@ -255,8 +268,7 @@ class TreePanel(HasTraits):
                             a.append(r.region.extended_channels[:,channel_num-1])
                             h += '{}"Extended channel {}"'.format(delimiter, channel_num)
 
-                    # Write it
-                    if any_checked:
+                        # Write output
                         if not dir_created_for_this_group:
                             # Try creating directory if it doesn't exist
                             try:
@@ -271,7 +283,9 @@ class TreePanel(HasTraits):
                         filename = os.path.join(dirname, r.name+'.xy')
                         with open(filename, 'w') as f:
                             if self.cb_header:
+                                # Output header
                                 print >> f, h
+                            # Output data
                             a = np.array(a).transpose()
                             np.savetxt(f, a, fmt='%1.8g', delimiter=delimiter)
                             print filename, 'written'
@@ -308,15 +322,20 @@ class TreePanel(HasTraits):
         Double-clicking a node cycles through selection states of subordinate regions
         all-on -> last-selection -> all-off -> all-on -> ...
         '''
-        region_state = {r.selection.counts for r in self.specs_regions}
-        if True in region_state:
-            # at least one of the regions is enabled, disable all
-            for r in self.specs_regions:
-                r.selection.region_cycle(all_off=True)
-        else:
-            # enable all counts
-            for r in self.specs_regions:
-                r.selection.region_cycle(counts_only=True)
+        try:
+            GUI.set_busy()                      # set hourglass         @UndefinedVariable
+            region_state = {r.selection.counts for r in self.specs_regions}
+            if True in region_state:
+                # at least one of the regions is enabled, disable all
+                for r in self.specs_regions:
+                    r.selection.region_cycle(all_off=True)
+            else:
+                # enable all counts
+                for r in self.specs_regions:
+                    r.selection.region_cycle(counts_only=True)
+        except:
+            pass
+        GUI.set_busy(False)                     # reset hourglass       @UndefinedVariable
 
     def _region_dclick(self):
         '''
@@ -328,28 +347,46 @@ class TreePanel(HasTraits):
         tree_panel._cycle_region_key()
 
     def _cycle_region_key(self, info=None):
-        for n in self.node_selection:
-            n.selection.region_cycle()
+        try:
+            GUI.set_busy()                      # set hourglass         @UndefinedVariable
+            for n in self.node_selection:
+                if isinstance(n, SPECSRegion):
+                    n.selection.region_cycle()
+                elif isinstance(n, SPECSGroup):
+                    for r in n.specs_regions:
+                        r.selection.region_cycle()
+        except:
+            pass
+        GUI.set_busy(False)                     # reset hourglass       @UndefinedVariable
 
     def set_node_icon(self, mode):
         for node in self.node_selection:
             node.icon = mode
 
+    def _change_selection_state(self, selection, set_state='toggle'):
+        try:
+            GUI.set_busy()                      # set hourglass         @UndefinedVariable
+            for n in selection:
+                if isinstance(n, SPECSRegion):
+                    n.selection.counts = not n.selection.counts if set_state=='toggle' else set_state
+                elif isinstance(n, SPECSGroup):
+                    for r in n.specs_regions:
+                        r.selection.counts = not r.selection.counts if set_state=='toggle' else set_state
+        except:
+            pass
+        GUI.set_busy(False)                     # reset hourglass       @UndefinedVariable
+
     def _toggle_key(self, info):
-        for n in self.node_selection:
-            if isinstance(n, SPECSRegion):
-                n.selection.counts = not n.selection.counts
-            elif isinstance(n, SPECSGroup):
-                for r in n.specs_regions:
-                    r.selection.counts = not r.selection.counts
+        # toggle counts of selection
+        self._change_selection_state(self.node_selection)
 
     def _select_key(self, info):
-        for n in self.node_selection:
-            n.selection.counts = True
+        # set counts of selection True
+        self._change_selection_state(self.node_selection, set_state=True)
 
     def _deselect_key(self, info):
-        for n in self.node_selection:
-            n.selection.counts = False
+        # set counts of selection False
+        self._change_selection_state(self.node_selection, set_state=False)
 
     class TreeHandler(Handler):
         def _menu_set_as_reference(self, editor, obj):
@@ -761,7 +798,7 @@ class SelectorPanel(HasTraits):
     name = Str('<unknown>')
     region = Instance(SPECSRegion)
     last_selection = Dict   # stores counts and channel traits whenever a checkbox is clicked
-    cycle_state = Enum('channels_on', 'counts_on', 'all_on')
+    cycle_state = Enum('counts_on', 'channels_on', 'all_on')
     cycle_channel_counts_state = Enum('all_on', 'all_off')('all_on')
     cycle_extended_channels_state = Enum('all_on', 'all_off')('all_off')
     plots = {}
@@ -973,6 +1010,9 @@ class SelectorPanel(HasTraits):
         if all_off:
             self.trait_set(**{i: False for i in self._instance_traits()
                               if is_bool_trait(self, i)})
+            self.trait_set(**{i: True for i in self._instance_traits()
+                              if get_name_body(i)=='channel_counts'})
+            self.counts = False
             self.cycle_state = 'channels_on'
             return
 
@@ -985,15 +1025,17 @@ class SelectorPanel(HasTraits):
 
         if self.cycle_state == 'counts_on':
             self.trait_set(**{i: True for i in self._instance_traits()
+                              if get_name_body(i)=='channel_counts'})
+            self.counts = False
+            self.cycle_state = 'channels_on'
+        elif self.cycle_state == 'channels_on':
+            self.trait_set(**{i: True for i in self._instance_traits()
                               if is_bool_trait(self, i)})
+            self.counts = True
             self.cycle_state = 'all_on'
         elif self.cycle_state == 'all_on':
             self.trait_set(**{i: False for i in self._instance_traits()
                               if is_bool_trait(self, i)})
-            self.trait_set(**{i: True for i in self._instance_traits()
-                              if get_name_body(i)=='channel_counts'})
-            self.cycle_state = 'channels_on'
-        else:                                       # channels_on
             self.trait_set(**{i: True for i in self._instance_traits()
                               if get_name_body(i)=='channel_counts'})
             self.counts = True
