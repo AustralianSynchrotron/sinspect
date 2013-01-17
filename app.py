@@ -6,9 +6,9 @@ from enable.api import ComponentEditor
 from traits.api import Str, Bool, Enum, List, Dict, Any, \
     HasTraits, Instance, Button, on_trait_change
 from traitsui.api import View, Group, HGroup, VGroup, HSplit, \
-    Item, UItem, TreeEditor, TreeNode, Menu, Action, Handler
+    Item, UItem, TreeEditor, TreeNode, Menu, Action, Handler, spring
 from traitsui.key_bindings import KeyBinding, KeyBindings
-from pyface.api import ImageResource, DirectoryDialog, OK, GUI
+from pyface.api import ImageResource, DirectoryDialog, OK, GUI, error
 from fixes import fix_background_color
 from chaco.api import Plot, ArrayPlotData, PlotAxis, \
     add_default_axes, add_default_grids
@@ -166,6 +166,7 @@ class SpecsFile(HasTraits):
 
 
 class TreePanel(HasTraits):
+    CONTEXT_MSG = '(Set from context menu)'
     specs_file = Instance(SpecsFile)
     file_path = Str(None)
     most_recent_path = Str('')
@@ -175,10 +176,13 @@ class TreePanel(HasTraits):
     # Buttons in the widget group above the tree area
     bt_open_file = Button('Open file...')
     bt_export_file = Button('Export...')
-    #bt_set_as_reference = Button('Set Ref')
-    bt_copy_to_selection = Button('Paste Ref:')
-    lb_ref = Str('')
+    bt_copy_to_selection = Button('Paste')
+    bt_clear_reference = Button('Clear')
+    lb_ref = Str(CONTEXT_MSG)
+    lb_norm_ref = Str(CONTEXT_MSG)
+    extended_channel_ref = Enum('None', 1, 2, 3, 4, 5, 6, 7, 8, 9)('None')
     ref = Instance(SPECSRegion)
+    norm_ref = Instance(SPECSRegion)
     cb_header = Bool(True)
     delimiter = Enum('tab','space','comma')('tab')
 
@@ -205,40 +209,53 @@ class TreePanel(HasTraits):
             pass
         GUI.set_busy(False)                     # reset hourglass       @UndefinedVariable
 
-    def _bt_export_file_changed(self):
-        ''' Event handler
-        Called when the user clicks the Export... button
-        '''
-        myFrame = wx.GetApp().GetTopWindow()
-        dlg = DirectoryDialog(default_path=self.most_recent_path, parent=myFrame, style='modal')
-        if dlg.open() == OK:
-            self.most_recent_path = dlg.path
+    def _renormalise(self, region, ys):
+        ys = ys.copy()
+        normalisation_channel = tree_panel.extended_channel_ref
+        if normalisation_channel != 'None':
+            # normalisation_channel is in the range 1-9
+            ys /= region.region.extended_channels[:,normalisation_channel-1]
+        return ys
 
-            # Export all regions in all groups
-            for g in self.specs_file.specs_groups:
-                dir_created_for_this_group = False
-                for r in g.specs_regions:
-                    # make file region.name+'.xy' in directory g.name
-                    # print g.name, r.name
-                    # Column data contains the following in left-to-right order:
-                    # x-axis, counts, channel_counts_n and extended_channels_n
+    def _file_save(self, path):
+        ''' Saves all regions set for export into a directory hierarchy rooted at path '''
+        # Export all regions in all groups
+        normalisation_errors = False
+        for g in self.specs_file.specs_groups:
+            dir_created_for_this_group = False
+            for r in g.specs_regions:
+                # make file region.name+'.xy' in directory g.name
+                # print g.name, r.name
+                # Column data contains the following in left-to-right order:
+                # x-axis, counts, channel_counts_n and extended_channels_n
 
-                    if r.selection.counts:
-                        # variable a holds the columnar count data. Start with the x-axis
-                        # then append counts, channel_counts and extended_channels as
-                        # appropriate
-                        a = [r.get_x_axis()]
-                        a.append(r.region.counts)
+                if r.selection.counts:
+                    # variable a holds the columnar count data. Start with the x-axis
+                    # then append counts, channel_counts and extended_channels as
+                    # appropriate.
+
+                    # x-axis data
+                    a = [r.get_x_axis()]
+
+                    normalisation_ref = tree_panel.extended_channel_ref
+                    normalisation_ok = True
+                    try:
+                        # counts data
+                        ys = self._renormalise(r, r.region.counts)
+                        a.append(ys)
+    
                         cc_dict = r.selection.get_channel_counts_states()
                         # make a string indicating the channel_counts columns summed to
                         # obtain the counts column  
                         counts_label = '+'.join([str(get_name_num(i))
                                                  for i in sorted(cc_dict) if cc_dict[i]])
                         delimiter = {'space':' ', 'comma':',', 'tab':'\t'}[self.delimiter]
-                        # Build header
+    
                         # First header line
                         h = ''
                         h += '#"'
+                        if normalisation_ref != 'None':
+                            h += 'Normalised to:Extended channel {}, '.format(normalisation_ref)
                         h += 'Analyzer mode:{}'.format(r.region.scan_mode)
                         h += ', Dwell time:{}'.format(r.region.dwell_time)
                         h += ', Pass energy:{}'.format(r.region.pass_energy)
@@ -248,53 +265,86 @@ class TreePanel(HasTraits):
                         elif r.region.scan_mode=='ConstantFinalState':
                             h += ', Kinetic energy:{}'.format(r.region.kinetic_energy)
                         h += '"\n'
-
+    
                         # Second header line
                         h += '#'
                         h += {'FixedAnalyzerTransmission':'"Binding Axis"',
                               'ConstantFinalState'       :'"Excitation Axis"',
                              }.get(r.region.scan_mode,    '"Kinetic Axis"')
                         h += '{}"Counts {}"'.format(delimiter, counts_label)
-
-                        # channel_counts_n
+    
+                        # channel_counts_n data
                         for name in sorted(r.selection.get_channel_counts_states()):
                             channel_num = get_name_num(name)
-                            a.append(r.region.channel_counts[:,channel_num-1])
+                            ys = self._renormalise(r, r.region.channel_counts[:,channel_num-1])
+                            a.append(ys)
                             h += '{}"Channel {} counts"'.format(delimiter, channel_num)
-
-                        # extended_channels_n
+    
+                        # extended_channels_n data
                         for name in sorted(r.selection.get_extended_channels_states()):
                             channel_num = get_name_num(name)
-                            a.append(r.region.extended_channels[:,channel_num-1])
+                            ys = r.region.extended_channels[:,channel_num-1]
+                            # Skipping normalisation of the extended channel used as the
+                            # reference allows the normalisation to be undone from the
+                            # exported data if desired. Without skipping, the reference column
+                            # would be all ones and such reversion would not be possible.
+                            if channel_num != normalisation_ref:
+                                ys = self._renormalise(r, ys)
+                            a.append(ys)
                             h += '{}"Extended channel {}"'.format(delimiter, channel_num)
+                    except FloatingPointError:
+                        normalisation_ok = False
+                        normalisation_errors = True
+                        h = 'Division errors normalising to Extended channel {}'.format(
+                            normalisation_ref)
 
-                        # Write output
-                        if not dir_created_for_this_group:
-                            # Try creating directory if it doesn't exist
-                            try:
-                                dirname = os.path.join(dlg.path, g.name)
-                                os.mkdir(dirname)
-                                dir_created_for_this_group = True
-                            except OSError:
-                                # Something exists already, or it can't be written
-                                # Maybe give a nice message here
-                                pass
+                    # Write output
+                    if not dir_created_for_this_group:
+                        # Try creating directory if it doesn't exist
+                        try:
+                            dirname = os.path.join(path, g.name)
+                            os.mkdir(dirname)
+                            dir_created_for_this_group = True
+                        except OSError:
+                            # Something exists already, or it can't be written
+                            # Maybe give a nice message here
+                            pass
 
+                    if normalisation_ok:
                         filename = os.path.join(dirname, r.name+'.xy')
-                        with open(filename, 'w') as f:
-                            if self.cb_header:
-                                # Output header
-                                print >> f, h
+                    else:
+                        filename = os.path.join(dirname, 'ERRORS_{}.xy'.format(r.name))
+                    with open(filename, 'w') as f:
+                        if self.cb_header:
+                            # Output header
+                            print >> f, h
+                        if normalisation_ok:
                             # Output data
                             a = np.array(a).transpose()
                             np.savetxt(f, a, fmt='%1.8g', delimiter=delimiter)
-                            print filename, 'written'
+                        print filename, 'written'
+        if normalisation_errors:
+            error(None, h)
+
+
+    def _bt_export_file_changed(self):
+        ''' Event handler
+        Called when the user clicks the Export... button
+        '''
+        myFrame = wx.GetApp().GetTopWindow()
+        dlg = DirectoryDialog(default_path=self.most_recent_path, parent=myFrame, style='modal')
+        if dlg.open() == OK:
+            self.most_recent_path = dlg.path
+            self._file_save(dlg.path)
 
     def _has_data(self):
         return self.file_path is not None
 
     def _reference_set(self):
-        return self.lb_ref is not ''
+        return self.lb_ref != self.CONTEXT_MSG
+
+    def _norm_reference_set(self):
+        return self.lb_norm_ref != self.CONTEXT_MSG
 
     def _group_select(self):
         # print 'gs', self.name
@@ -307,6 +357,17 @@ class TreePanel(HasTraits):
                 if isinstance(r, SPECSRegion):
                     # paste all counts, channel_counts_ and extended_channels_ states
                     r.selection.set(**trait_dict)
+
+    def _extended_channel_ref_changed(self):
+        ''' If the normalisation channel drop-down selection is changed, force a refresh
+        of the plots in the current selection to ensure that they all have the latest
+        normalisation applied '''
+        if isinstance(self.node_selection[0], SPECSRegion):
+            self.node_selection[0].selection._refresh_current_view()
+
+    def _bt_clear_reference_changed(self):
+        self.lb_norm_ref = self.CONTEXT_MSG
+        self.norm_ref = None
 
     def _region_select(self):
         # Update SelectorPanel
@@ -368,10 +429,12 @@ class TreePanel(HasTraits):
             GUI.set_busy()                      # set hourglass         @UndefinedVariable
             for n in selection:
                 if isinstance(n, SPECSRegion):
-                    n.selection.counts = not n.selection.counts if set_state=='toggle' else set_state
+                    n.selection.counts = \
+                        not n.selection.counts if set_state=='toggle' else set_state
                 elif isinstance(n, SPECSGroup):
                     for r in n.specs_regions:
-                        r.selection.counts = not r.selection.counts if set_state=='toggle' else set_state
+                        r.selection.counts = \
+                            not r.selection.counts if set_state=='toggle' else set_state
         except:
             pass
         GUI.set_busy(False)                     # reset hourglass       @UndefinedVariable
@@ -395,6 +458,12 @@ class TreePanel(HasTraits):
             '''
             tree_panel.ref = obj
             tree_panel.lb_ref = obj.name
+
+        def _menu_set_as_norm_reference(self, editor, obj):
+            ''' Sets the current tree node object as the source for normalisation.
+            '''
+            tree_panel.norm_ref = obj
+            tree_panel.lb_norm_ref = obj.name
 
     # View for objects that aren't edited
     no_view = View()
@@ -434,8 +503,12 @@ class TreePanel(HasTraits):
                       auto_open = True,
                       label     = 'label_name',
                       view      = no_view,
-                      menu      = Menu(Action(name='Set as reference',
-                              action='handler._menu_set_as_reference(editor,object)')),
+                      menu      = Menu(
+                                    Action(name='Set selection region',
+                                           action='handler._menu_set_as_reference(editor,object)'),
+                                    Action(name='Set normalisation region',
+                                           action='handler._menu_set_as_norm_reference(editor,object)'),
+                                  ),
                       rename_me = False,
                       on_select = _region_select,
                       on_dclick = _region_dclick,
@@ -449,7 +522,8 @@ class TreePanel(HasTraits):
     )
 
     key_bindings = KeyBindings(
-        KeyBinding( binding1    = 't',
+        KeyBinding( binding1    = 'Space',
+                    binding2    = 't',
                     description = 'Toggle Selection',
                     method_name = '_toggle_key' ),
         KeyBinding( binding1    = '+',
@@ -459,8 +533,7 @@ class TreePanel(HasTraits):
         KeyBinding( binding1    = '-',
                     description = 'Deselect',
                     method_name = '_deselect_key' ),
-        KeyBinding( binding1    = 'Space',
-                    binding2    = 'c',
+        KeyBinding( binding1    = 'c',
                     description = 'Cycle region',
                     method_name = '_cycle_region_key' ),
     )
@@ -470,6 +543,29 @@ class TreePanel(HasTraits):
                         UItem('bt_open_file'),
                         VGroup(
                             HGroup(
+                                Item('lb_ref', label='Region', style='readonly'),
+                                spring,
+                                UItem('bt_copy_to_selection', enabled_when='object._reference_set()'),
+                            ),
+                            label = 'Selection',
+                            show_border = True,
+                        ),
+                        VGroup(
+                            HGroup(
+                                Item('lb_norm_ref', label='Region', style='readonly'),
+                                spring,
+                                Item('extended_channel_ref', label='ref:', enabled_when='object._has_data()')
+                            ),
+                            UItem('bt_clear_reference', visible_when='object._norm_reference_set()'),
+                            label = 'Normalisation',
+                            show_border = True,
+                        ),
+                        UItem(
+                            name = 'specs_file',
+                            editor = tree_editor,
+                        ),
+                        VGroup(
+                            HGroup(
                                 Item('cb_header', label='Include header'),
                                 Item('delimiter'),
                             ),
@@ -477,18 +573,6 @@ class TreePanel(HasTraits):
                             enabled_when = 'object._has_data()',
                             label = 'Data Export',
                             show_border = True,
-                        ),
-                        VGroup(
-                            HGroup(
-                                UItem('bt_copy_to_selection', enabled_when='object._reference_set()'),
-                                UItem('lb_ref', style='readonly'),
-                            ),
-                            label = 'Selection',
-                            show_border = True,
-                        ),
-                        UItem(
-                            name = 'specs_file',
-                            editor = tree_editor,
                         ),
                         key_bindings = key_bindings,
                         handler = TreeHandler(),
@@ -636,7 +720,7 @@ class PlotPanel(HasTraits):
         return self.plot
 
     def remove_plot(self, name, draw_layer='foreground'):
-        if name is 'tool_plot':
+        if name == 'tool_plot':
             # Never remove this one since the chaco tools are attached to it 
             return
         if name.split('_')[0] not in self.LAYERS:
@@ -708,54 +792,6 @@ class PlotPanel(HasTraits):
                     )
 
 
-#class LineSelectionTool(BaseTool):
-#    ''' 
-#    From http://enthought-dev.117412.n3.nabble.com/selecting-a-curve-by-clicking-on-it-td3207577.html
-#    enthought.enable.base_tool.BaseTool is a subclass of
-#    enthought.enable.interactor.Interactor that has a 'component'
-#    trait set during __init__
-#    '''
-#
-#    threshold = Float(15.0)  # Threshold in pixels.
-#
-#    def normal_left_down(self, event):
-#        control = event.window.control   # Get the underlying widget.
-#        hits = self.component.components_at(event.x, event.y)
-#        actions = []
-#        for component in hits:
-#            # event.x and event.y are relative to event.window
-#            # and need to be translated to the component's coordinate
-#            # space.
-#            offset_x, offset_y = component.container.position
-#            x = event.x - offset_x
-#            y = event.y - offset_y
-#            # As noted in the enthought.chaco.lineplot.LinePlot.hittest
-#            # method docs:
-#            # "This only checks data points and *not* the actual line
-#            # segments connecting them."
-#            point = component.hittest((x, y), self.threshold)
-#            if point is not None:
-#                # Find the label of the component.
-#                label = None
-#                for candidate, subplots in component.container.plots.iteritems():
-#                    if component in subplots:
-#                        label = candidate
-#                if label is not None:
-#                    action = QtGui.QAction(label, None)
-#                    @action.triggered.connect
-#                    def on_action_triggered(checked, label=label, component=component):
-#                        component.edit_traits()
-#                    actions.append(action)
-#        if len(actions) > 0:
-#            menu = QtGui.QMenu(control)
-#            for action in actions:
-#                menu.addAction(action)
-#            menu.exec_(QtGui.QCursor.pos())
-#        else:
-#            # No actions were created, show no menu.
-#            pass 
-
-
 def get_name_body(series_name):
     ''' Get first part of name
     e.g. get_name_body('foo_bar_baz') returns foo_bar
@@ -782,7 +818,7 @@ class SelectorPanel(HasTraits):
     '''
     A panel of checkboxes reflecting the channels within the specs region used for
     toggling plot visibility and flagging for export.
-    A "better" way to implememnt this would be to create a "dynamic view" that has a
+    A "better" way to implement this would be to create a "dynamic view" that has a
     checkbox for each Bool trait in the region object. However, dynamic views seem
     extremely tricky, so instead I just reflect the state of the region object's traits
     in the checkboxes here.
@@ -801,9 +837,10 @@ class SelectorPanel(HasTraits):
     cycle_state = Enum('counts_on', 'channels_on', 'all_on')
     cycle_channel_counts_state = Enum('all_on', 'all_off')('all_on')
     cycle_extended_channels_state = Enum('all_on', 'all_off')('all_off')
-    plots = {}
     bt_cycle_channel_counts = Button('All on/off')
     bt_cycle_extended_channels = Button('All on/off')
+
+    # error = Property(Bool, sync_to_view='counts.invalid')
 
     def __init__(self, region=None, **traits):
         super(SelectorPanel, self).__init__(**traits)   # HasTraits.__init__(self, **traits)
@@ -915,7 +952,7 @@ class SelectorPanel(HasTraits):
         if self.counts:
             self.counts = False
             self.counts = True
-        
+
         # update the tree label to indicate the selection
         self.region.update_label()
 
@@ -949,6 +986,17 @@ class SelectorPanel(HasTraits):
             # matching array from the specs.SPECSRegion object.
             series_name = get_name_body(series_name)
             ys = self.region.region.__getattribute__(series_name)[:,column-1]
+        ys = ys.copy()      # deepcopy in anticipation of having to renormalise the data
+
+        # If normalising, rescale here, which takes care of rendering correctly. This
+        # strategy requires normalisation to be performed again at the export stage.
+        normalisation_ref = tree_panel.extended_channel_ref
+        if normalisation_ref != 'None':
+            # normalisation_ref is in the range 1-9
+            try:
+                ys /= self.region.region.extended_channels[:,normalisation_ref-1]
+            except FloatingPointError:
+                pass
 
         line_attributes = { \
             'counts'            : {'color':'black', 'width':2.0},
@@ -962,13 +1010,24 @@ class SelectorPanel(HasTraits):
         name = self._name_plot(region, series_name)
         plot_panel.remove_plot(name)
 
+    def _refresh_current_view(self):
+        ''' Toggle off and on all boolean/checkbox traits in the current selection.
+        This is intended to be called when the normalisation reference channel is updated
+        to force replotting and recalculation of the data. '''
+        trait_dict = self.get_trait_states()
+        true_traits = [i for i in trait_dict if trait_dict[i]]
+        params_to_reset_traits = {i:False for i in true_traits}
+        params_to_set_traits = {i:True for i in true_traits}
+        # toggle off then on
+        self.set(**params_to_reset_traits)
+        self.set(**params_to_set_traits)
+
     def plot_checkbox_states(self):
         ''' Add plots to the default (foreground) layer reflecting the checkbox states
         '''
         trait_dict = self.get_trait_states()
         for trait, val in trait_dict.iteritems():
             if val:
-                # counts
                 if trait=='counts':
                     self._add_plot(self.region, trait)
                 else:
@@ -1115,8 +1174,8 @@ Mousewheel = Zoom in/out <br>
 <h5>Keyboard shortcuts for tree selections</h5>
 +,=      Select
 -        Deselect
-t        Toggle counts
-Space,c  Cycle
+Space,t  Toggle counts
+c        Cycle
 
 <h5>About the software</h5>
 
@@ -1139,12 +1198,13 @@ Resources (NeCTAR) project to develop eResearch Tools for the synchrotron resear
 scientific users to have instant access to the results of data during the course of their experiment which will
 facilitate better decision making and also provide the opportunity for ongoing data analysis via remote access.
 
-Copyright (c) 2012, Australian Synchrotron Company Ltd <br>
+Copyright (c) 2013, Australian Synchrotron Company Ltd <br>
 All rights reserved.
 """
 
 
 if __name__ == "__main__":
+    np.seterr(divide='raise')
     tree_panel = TreePanel(specs_file=SpecsFile())
     selector_panel = SelectorPanel()
     plot_panel = PlotPanel()
