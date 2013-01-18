@@ -166,7 +166,7 @@ class SpecsFile(HasTraits):
 
 
 class TreePanel(HasTraits):
-    CONTEXT_MSG = '(Set from context menu)'
+    CONTEXT_MSG = '(Set from right-click menu)'
     specs_file = Instance(SpecsFile)
     file_path = Str(None)
     most_recent_path = Str('')
@@ -216,6 +216,15 @@ class TreePanel(HasTraits):
             # normalisation_channel is in the range 1-9
             ys /= region.region.extended_channels[:,normalisation_channel-1]
         return ys
+
+    def get_normalisation_mode(self):
+        ''' Returns the current normalisation mode, which will be
+        one of 'self' or 'double'
+        '''
+        if self._norm_reference_set():
+            return 'double'
+        else:
+            return 'self'
 
     def _file_save(self, path):
         ''' Saves all regions set for export into a directory hierarchy rooted at path '''
@@ -326,7 +335,6 @@ class TreePanel(HasTraits):
         if normalisation_errors:
             error(None, h)
 
-
     def _bt_export_file_changed(self):
         ''' Event handler
         Called when the user clicks the Export... button
@@ -370,7 +378,6 @@ class TreePanel(HasTraits):
         self.norm_ref = None
         if isinstance(self.node_selection[0], SPECSRegion):
             self.node_selection[0].selection.refresh_dbl_norm_ref()
-
 
     def _region_select(self):
         # Update SelectorPanel
@@ -423,10 +430,6 @@ class TreePanel(HasTraits):
             pass
         GUI.set_busy(False)                     # reset hourglass       @UndefinedVariable
 
-    def set_node_icon(self, mode):
-        for node in self.node_selection:
-            node.icon = mode
-
     def _change_selection_state(self, selection, set_state='toggle'):
         try:
             GUI.set_busy()                      # set hourglass         @UndefinedVariable
@@ -455,6 +458,7 @@ class TreePanel(HasTraits):
         self._change_selection_state(self.node_selection, set_state=False)
 
     class TreeHandler(Handler):
+        ''' This Handler supports the right-click menu actions '''
         def _menu_set_as_reference(self, editor, obj):
             ''' Sets the current tree node object as the source for copying state to
             selected tree items.
@@ -463,11 +467,10 @@ class TreePanel(HasTraits):
             tree_panel.lb_ref = obj.name
 
         def _menu_set_as_norm_reference(self, editor, obj):
-            ''' Sets the current tree node object as the source for normalisation.
-            '''
+            ''' Sets the current tree node object as the source for normalisation. '''
             tree_panel.norm_ref = obj
             tree_panel.lb_norm_ref = obj.name
-            # Now refresh the selection panel to force its drop-down selector appears
+            # Now refresh the selection panel to force its drop-down selector to appear
             tree_panel.node_selection[0].selection.refresh_dbl_norm_ref()
 
 
@@ -486,9 +489,6 @@ class TreePanel(HasTraits):
                       menu      = Menu(),
                       #on_dclick = _bt_open_file_changed,
                       rename_me = False,
-                      icon_path = 'resources',
-                      #icon_open = 'file.ico',
-                      #icon_group = 'file.ico',
                     ),
 
             TreeNode( node_for  = [SPECSGroup],
@@ -501,8 +501,6 @@ class TreePanel(HasTraits):
                       rename_me = False,
                       on_select = _group_select,
                       on_dclick = _group_dclick,
-                      icon_path = 'resources',
-                      #icon_open = 'group.ico',
                     ),
 
             TreeNode( node_for  = [SPECSRegion],
@@ -518,8 +516,6 @@ class TreePanel(HasTraits):
                       rename_me = False,
                       on_select = _region_select,
                       on_dclick = _region_dclick,
-                      icon_path = 'resources',
-                      #icon_item = 'region.ico',
                     )
         ],
         editable = False,           # suppress the editor pane as we are using the separate Chaco pane for this
@@ -560,7 +556,7 @@ class TreePanel(HasTraits):
                             HGroup(
                                 Item('lb_norm_ref', label='Region', style='readonly'),
                                 spring,
-                                Item('extended_channel_ref', label='ref:', enabled_when='object._has_data()')
+                                Item('extended_channel_ref', label='ref:', enabled_when='object._has_data() and not object._norm_reference_set()')
                             ),
                             UItem('bt_clear_reference', visible_when='object._norm_reference_set()'),
                             label = 'Normalisation',
