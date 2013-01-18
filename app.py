@@ -368,6 +368,9 @@ class TreePanel(HasTraits):
     def _bt_clear_reference_changed(self):
         self.lb_norm_ref = self.CONTEXT_MSG
         self.norm_ref = None
+        if isinstance(self.node_selection[0], SPECSRegion):
+            self.node_selection[0].selection.refresh_dbl_norm_ref()
+
 
     def _region_select(self):
         # Update SelectorPanel
@@ -464,6 +467,9 @@ class TreePanel(HasTraits):
             '''
             tree_panel.norm_ref = obj
             tree_panel.lb_norm_ref = obj.name
+            # Now refresh the selection panel to force its drop-down selector appears
+            tree_panel.node_selection[0].selection.refresh_dbl_norm_ref()
+
 
     # View for objects that aren't edited
     no_view = View()
@@ -839,6 +845,8 @@ class SelectorPanel(HasTraits):
     cycle_extended_channels_state = Enum('all_on', 'all_off')('all_off')
     bt_cycle_channel_counts = Button('All on/off')
     bt_cycle_extended_channels = Button('All on/off')
+    dbl_norm_ref = Enum(1, 2, 3, 4, 5, 6, 7, 8, 9)(3)
+    toggle_to_force_refresh = Bool(False)   # Used by the refresh_dbl_norm_ref() method 
 
     # error = Property(Bool, sync_to_view='counts.invalid')
 
@@ -868,6 +876,9 @@ class SelectorPanel(HasTraits):
 
         self.cycle_state = 'counts_on'
 
+    def _norm_reference_set(self):
+        return tree_panel.lb_norm_ref != tree_panel.CONTEXT_MSG
+
     def default_traits_view(self):
         '''
         Called to create the selection view to be shown in the selection panel.
@@ -875,9 +886,8 @@ class SelectorPanel(HasTraits):
         "None" SelectorPanel.
         https://mail.enthought.com/pipermail/enthought-dev/2012-May/031008.html
         '''
-        trait_dict = self._instance_traits()
         items = []
-        if 'counts' in trait_dict:
+        if 'counts' in self._instance_traits():
             group1 = HGroup()
             group1.content = []
 
@@ -889,8 +899,8 @@ class SelectorPanel(HasTraits):
             group1.content.append(group)
 
             # channel_counts_x group
-            channel_counts_buttons = [Item(name, label=name.split('_')[-1])
-                            for name in sorted(trait_dict) if 'channel_counts_' in name]
+            channel_counts_buttons = [Item(name, label=str(get_name_num(name)))
+                            for name in sorted(self.get_channel_counts_states())]
             channel_counts_buttons.append(UItem('bt_cycle_channel_counts'))
             if len(channel_counts_buttons) > 0:
                 group = HGroup()
@@ -900,8 +910,8 @@ class SelectorPanel(HasTraits):
                 group1.content.append(group)
 
             # extended_channels_x group
-            extended_channels_buttons = [Item(name, label=name.split('_')[-1])
-                            for name in sorted(trait_dict) if 'extended_channels_' in name]
+            extended_channels_buttons = [Item(name, label=str(get_name_num(name)))
+                            for name in sorted(self.get_extended_channels_states())]
             extended_channels_buttons.append(UItem('bt_cycle_extended_channels'))
             if len(extended_channels_buttons) > 0:
                 group = HGroup()
@@ -910,10 +920,27 @@ class SelectorPanel(HasTraits):
                 group.label = 'Extended Channels'
                 group1.content.append(group)
 
+                # extended channel double normalisation reference
+                group = HGroup()
+                group.content = [Item('dbl_norm_ref', label='ref:')]
+                group.show_border = True
+                group.label = 'Dbl nrm ref'
+                group.visible_when = 'object._norm_reference_set()'
+                group1.content.append(group)
+
             group1.label = self.region.name
             group1.show_border = True
             items.append(group1)
         return View(*items)
+
+    def refresh_dbl_norm_ref(self):
+        ''' Forces the traitsui visible_when conditions to be checked.
+        According to the traitsui docs, "all visible_when conditions are checked each time
+        that any trait value is edited in the display." It turns out that toggling this
+        trait forces the visible_when conditions to be checked despite the trait not
+        having a corresponding Item in the selection panel View.
+        '''
+        self.toggle_to_force_refresh = not self.toggle_to_force_refresh
 
     def _counts_changed(self, trait, old, new):
         ''' Trait event handler
