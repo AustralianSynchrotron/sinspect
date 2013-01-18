@@ -166,7 +166,7 @@ class SpecsFile(HasTraits):
 
 
 class TreePanel(HasTraits):
-    CONTEXT_MSG = '(Set from context menu)'
+    CONTEXT_MSG = '(Set from right-click menu)'
     specs_file = Instance(SpecsFile)
     file_path = Str(None)
     most_recent_path = Str('')
@@ -216,6 +216,15 @@ class TreePanel(HasTraits):
             # normalisation_channel is in the range 1-9
             ys /= region.region.extended_channels[:,normalisation_channel-1]
         return ys
+
+    def get_normalisation_mode(self):
+        ''' Returns the current normalisation mode, which will be
+        one of 'self' or 'double'
+        '''
+        if self._norm_reference_set():
+            return 'double'
+        else:
+            return 'self'
 
     def _file_save(self, path):
         ''' Saves all regions set for export into a directory hierarchy rooted at path '''
@@ -326,7 +335,6 @@ class TreePanel(HasTraits):
         if normalisation_errors:
             error(None, h)
 
-
     def _bt_export_file_changed(self):
         ''' Event handler
         Called when the user clicks the Export... button
@@ -368,6 +376,8 @@ class TreePanel(HasTraits):
     def _bt_clear_reference_changed(self):
         self.lb_norm_ref = self.CONTEXT_MSG
         self.norm_ref = None
+        if isinstance(self.node_selection[0], SPECSRegion):
+            self.node_selection[0].selection.refresh_dbl_norm_ref()
 
     def _region_select(self):
         # Update SelectorPanel
@@ -420,10 +430,6 @@ class TreePanel(HasTraits):
             pass
         GUI.set_busy(False)                     # reset hourglass       @UndefinedVariable
 
-    def set_node_icon(self, mode):
-        for node in self.node_selection:
-            node.icon = mode
-
     def _change_selection_state(self, selection, set_state='toggle'):
         try:
             GUI.set_busy()                      # set hourglass         @UndefinedVariable
@@ -452,6 +458,7 @@ class TreePanel(HasTraits):
         self._change_selection_state(self.node_selection, set_state=False)
 
     class TreeHandler(Handler):
+        ''' This Handler supports the right-click menu actions '''
         def _menu_set_as_reference(self, editor, obj):
             ''' Sets the current tree node object as the source for copying state to
             selected tree items.
@@ -460,10 +467,12 @@ class TreePanel(HasTraits):
             tree_panel.lb_ref = obj.name
 
         def _menu_set_as_norm_reference(self, editor, obj):
-            ''' Sets the current tree node object as the source for normalisation.
-            '''
+            ''' Sets the current tree node object as the source for normalisation. '''
             tree_panel.norm_ref = obj
             tree_panel.lb_norm_ref = obj.name
+            # Now refresh the selection panel to force its drop-down selector to appear
+            tree_panel.node_selection[0].selection.refresh_dbl_norm_ref()
+
 
     # View for objects that aren't edited
     no_view = View()
@@ -480,9 +489,6 @@ class TreePanel(HasTraits):
                       menu      = Menu(),
                       #on_dclick = _bt_open_file_changed,
                       rename_me = False,
-                      icon_path = 'resources',
-                      #icon_open = 'file.ico',
-                      #icon_group = 'file.ico',
                     ),
 
             TreeNode( node_for  = [SPECSGroup],
@@ -495,8 +501,6 @@ class TreePanel(HasTraits):
                       rename_me = False,
                       on_select = _group_select,
                       on_dclick = _group_dclick,
-                      icon_path = 'resources',
-                      #icon_open = 'group.ico',
                     ),
 
             TreeNode( node_for  = [SPECSRegion],
@@ -512,8 +516,6 @@ class TreePanel(HasTraits):
                       rename_me = False,
                       on_select = _region_select,
                       on_dclick = _region_dclick,
-                      icon_path = 'resources',
-                      #icon_item = 'region.ico',
                     )
         ],
         editable = False,           # suppress the editor pane as we are using the separate Chaco pane for this
@@ -554,7 +556,7 @@ class TreePanel(HasTraits):
                             HGroup(
                                 Item('lb_norm_ref', label='Region', style='readonly'),
                                 spring,
-                                Item('extended_channel_ref', label='ref:', enabled_when='object._has_data()')
+                                Item('extended_channel_ref', label='ref:', enabled_when='object._has_data() and not object._norm_reference_set()')
                             ),
                             UItem('bt_clear_reference', visible_when='object._norm_reference_set()'),
                             label = 'Normalisation',
@@ -839,6 +841,8 @@ class SelectorPanel(HasTraits):
     cycle_extended_channels_state = Enum('all_on', 'all_off')('all_off')
     bt_cycle_channel_counts = Button('All on/off')
     bt_cycle_extended_channels = Button('All on/off')
+    dbl_norm_ref = Enum(1, 2, 3, 4, 5, 6, 7, 8, 9)(3)
+    toggle_to_force_refresh = Bool(False)   # Used by the refresh_dbl_norm_ref() method 
 
     # error = Property(Bool, sync_to_view='counts.invalid')
 
@@ -868,6 +872,9 @@ class SelectorPanel(HasTraits):
 
         self.cycle_state = 'counts_on'
 
+    def _norm_reference_set(self):
+        return tree_panel.lb_norm_ref != tree_panel.CONTEXT_MSG
+
     def default_traits_view(self):
         '''
         Called to create the selection view to be shown in the selection panel.
@@ -875,9 +882,8 @@ class SelectorPanel(HasTraits):
         "None" SelectorPanel.
         https://mail.enthought.com/pipermail/enthought-dev/2012-May/031008.html
         '''
-        trait_dict = self._instance_traits()
         items = []
-        if 'counts' in trait_dict:
+        if 'counts' in self._instance_traits():
             group1 = HGroup()
             group1.content = []
 
@@ -889,8 +895,8 @@ class SelectorPanel(HasTraits):
             group1.content.append(group)
 
             # channel_counts_x group
-            channel_counts_buttons = [Item(name, label=name.split('_')[-1])
-                            for name in sorted(trait_dict) if 'channel_counts_' in name]
+            channel_counts_buttons = [Item(name, label=str(get_name_num(name)))
+                            for name in sorted(self.get_channel_counts_states())]
             channel_counts_buttons.append(UItem('bt_cycle_channel_counts'))
             if len(channel_counts_buttons) > 0:
                 group = HGroup()
@@ -900,8 +906,8 @@ class SelectorPanel(HasTraits):
                 group1.content.append(group)
 
             # extended_channels_x group
-            extended_channels_buttons = [Item(name, label=name.split('_')[-1])
-                            for name in sorted(trait_dict) if 'extended_channels_' in name]
+            extended_channels_buttons = [Item(name, label=str(get_name_num(name)))
+                            for name in sorted(self.get_extended_channels_states())]
             extended_channels_buttons.append(UItem('bt_cycle_extended_channels'))
             if len(extended_channels_buttons) > 0:
                 group = HGroup()
@@ -910,10 +916,27 @@ class SelectorPanel(HasTraits):
                 group.label = 'Extended Channels'
                 group1.content.append(group)
 
+                # extended channel double normalisation reference
+                group = HGroup()
+                group.content = [Item('dbl_norm_ref', label='ref:')]
+                group.show_border = True
+                group.label = 'Dbl nrm ref'
+                group.visible_when = 'object._norm_reference_set()'
+                group1.content.append(group)
+
             group1.label = self.region.name
             group1.show_border = True
             items.append(group1)
         return View(*items)
+
+    def refresh_dbl_norm_ref(self):
+        ''' Forces the traitsui visible_when conditions to be checked.
+        According to the traitsui docs, "all visible_when conditions are checked each time
+        that any trait value is edited in the display." It turns out that toggling this
+        trait forces the visible_when conditions to be checked despite the trait not
+        having a corresponding Item in the selection panel View.
+        '''
+        self.toggle_to_force_refresh = not self.toggle_to_force_refresh
 
     def _counts_changed(self, trait, old, new):
         ''' Trait event handler
