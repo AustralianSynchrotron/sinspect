@@ -209,22 +209,53 @@ class TreePanel(HasTraits):
             pass
         GUI.set_busy(False)                     # reset hourglass       @UndefinedVariable
 
-    def _renormalise(self, region, ys):
-        ys = ys.copy()
-        normalisation_channel = tree_panel.extended_channel_ref
-        if normalisation_channel != 'None':
-            # normalisation_channel is in the range 1-9
-            ys /= region.region.extended_channels[:,normalisation_channel-1]
+    def normalise_self(self, region, ys):
+        normalisation_ref = tree_panel.extended_channel_ref
+        if normalisation_ref != 'None':
+            # normalisation_ref is in the range 1-9
+            ys /= region.region.extended_channels[:,normalisation_ref-1]
         return ys
 
-    def get_normalisation_mode(self):
-        ''' Returns the current normalisation mode, which will be
-        one of 'self' or 'double'
-        '''
-        if self._norm_reference_set():
-            return 'double'
+    def normalise_double(self, region, ys, series_name, ys_column):
+        # Perform double normalisation procedure on a vector of y-values (ys) that belong
+        # to region (region). The column name (series_name) and column index (ys_column)
+        # are also passed to enable retrieval of the correct column data from the
+        # reference region.
+        # The procedure is performed wrt the region selected in the tree_panel widget as
+        # the reference region.
+        # Double normalisation procedure is:
+        # n  <- norm_ys/norm_ref_ys
+        # rn <- region_ys/region_ref_ys
+        # ys <- rn/n
+
+        tnr = tree_panel.norm_ref.region
+        # n  <- norm_ys/norm_ref_ys
+        norm_channel = tnr.owner.selection.dbl_norm_ref
+        norm_ref_ys = tnr.extended_channels[:,norm_channel-1]
+        series_name_body = get_name_body(series_name)
+        print series_name_body, ys_column
+        if series_name == 'counts':
+            norm_ys = tnr.counts
         else:
-            return 'self'
+            norm_ys = tnr.__getattribute__(series_name_body)[:,ys_column-1]
+        n = norm_ys / norm_ref_ys
+
+        # rn <- region_ys/region_ref_ys
+        region_ref_channel = region.selection.dbl_norm_ref
+        region_ref_ys = region.region.extended_channels[:,region_ref_channel-1]
+        rn = ys / region_ref_ys 
+
+        # ys <- rn/n
+        return rn / n
+
+    def normalise(self, region, ys, series_name=None, ys_column=None):
+        ys = ys.copy()
+        if self.get_normalisation_mode() == 'self':
+            ys = self.normalise_self(region, ys)
+        else:
+            # get_normalisation_mode() return value 'double'
+            ys = self.normalise_double(region, ys, series_name, ys_column)
+        return ys
 
     def _file_save(self, path):
         ''' Saves all regions set for export into a directory hierarchy rooted at path '''
@@ -250,7 +281,7 @@ class TreePanel(HasTraits):
                     normalisation_ok = True
                     try:
                         # counts data
-                        ys = self._renormalise(r, r.region.counts)
+                        ys = self.normalise(r, r.region.counts)
                         a.append(ys)
     
                         cc_dict = r.selection.get_channel_counts_states()
@@ -285,7 +316,7 @@ class TreePanel(HasTraits):
                         # channel_counts_n data
                         for name in sorted(r.selection.get_channel_counts_states()):
                             channel_num = get_name_num(name)
-                            ys = self._renormalise(r, r.region.channel_counts[:,channel_num-1])
+                            ys = self.normalise(r, r.region.channel_counts[:,channel_num-1])
                             a.append(ys)
                             h += '{}"Channel {} counts"'.format(delimiter, channel_num)
     
@@ -298,7 +329,7 @@ class TreePanel(HasTraits):
                             # exported data if desired. Without skipping, the reference column
                             # would be all ones and such reversion would not be possible.
                             if channel_num != normalisation_ref:
-                                ys = self._renormalise(r, ys)
+                                ys = self.normalise(r, ys)
                             a.append(ys)
                             h += '{}"Extended channel {}"'.format(delimiter, channel_num)
                     except FloatingPointError:
@@ -353,6 +384,14 @@ class TreePanel(HasTraits):
 
     def _norm_reference_set(self):
         return self.lb_norm_ref != self.CONTEXT_MSG
+
+    def get_normalisation_mode(self):
+        ''' Returns the current normalisation mode: one of 'self' or 'double'
+        '''
+        if self._norm_reference_set():
+            return 'double'
+        else:
+            return 'self'
 
     def _group_select(self):
         # print 'gs', self.name
@@ -948,6 +987,13 @@ class SelectorPanel(HasTraits):
             self._remove_plot(self.region, trait)
         self.region.update_label()
 
+    def refresh_counts(self):
+        ''' Refresh counts computation and plot series by toggling one of the
+        channel_counts_ series to cause a _channel_counts_x_changed() trait change event.
+        '''
+        self.channel_counts_1 = not self.channel_counts_1 
+        self.channel_counts_1 = not self.channel_counts_1 
+
     @on_trait_change('channel_counts_+')
     def _channel_counts_x_changed(self, container, trait, new):
         ''' Trait event handler
@@ -990,6 +1036,9 @@ class SelectorPanel(HasTraits):
             self._remove_plot(self.region, trait)
         self.region.update_label()
 
+    def _dbl_norm_ref_changed(self):
+        self._refresh_current_view()
+
     def _name_plot(self, region, series_name):
         ''' Make a unique name based on the group_name, region_name and series_name parts
         which together form a unique triple because we enforced uniqueness when reading
@@ -1002,30 +1051,28 @@ class SelectorPanel(HasTraits):
         name = self._name_plot(region, series_name)
         xs = self.region.get_x_axis()
         if series_name == 'counts':
+            series_name_body = 'counts'
             ys = self.region.region.counts
         else:
             # Get 'first_second' part of the name 'first_second_n' which will either be
             # 'channel_counts' or 'extended_channels'. Then use this to retrieve the
             # matching array from the specs.SPECSRegion object.
-            series_name = get_name_body(series_name)
-            ys = self.region.region.__getattribute__(series_name)[:,column-1]
+            series_name_body = get_name_body(series_name)
+            ys = self.region.region.__getattribute__(series_name_body)[:,column-1]
         ys = ys.copy()      # deepcopy in anticipation of having to renormalise the data
 
         # If normalising, rescale here, which takes care of rendering correctly. This
         # strategy requires normalisation to be performed again at the export stage.
-        normalisation_ref = tree_panel.extended_channel_ref
-        if normalisation_ref != 'None':
-            # normalisation_ref is in the range 1-9
-            try:
-                ys /= self.region.region.extended_channels[:,normalisation_ref-1]
-            except FloatingPointError:
-                pass
+        try:
+            ys = tree_panel.normalise(self.region, ys, series_name, column)
+        except (FloatingPointError, ValueError):
+            ys = np.zeros_like(ys)  # do this so display reflects that normalisation failed
 
         line_attributes = { \
             'counts'            : {'color':'black', 'width':2.0},
             'channel_counts'    : {'color':'blue' , 'width':1.5},
             'extended_channels' : {'color':'red'  , 'width':1.5},
-            }[series_name]
+            }[series_name_body]
         plot_panel.add_plot(name, xs, ys, **line_attributes)
 
     def _remove_plot(self, region, series_name):
