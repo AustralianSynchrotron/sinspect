@@ -210,34 +210,55 @@ class TreePanel(HasTraits):
         GUI.set_busy(False)                     # reset hourglass       @UndefinedVariable
 
     def normalise_self(self, region, ys):
+        ''' Return a vector of ys normalised against the y-values in region indexed by
+        the tree_panel.extended_channel_ref drop-down selector. '''
         normalisation_ref = tree_panel.extended_channel_ref
         if normalisation_ref != 'None':
             # normalisation_ref is in the range 1-9
             ys /= region.region.extended_channels[:,normalisation_ref-1]
         return ys
 
-    def normalise_double(self, region, ys, series_name, ys_column):
-        # Perform double normalisation procedure on a vector of y-values (ys) that belong
-        # to region (region). The column name (series_name) and column index (ys_column)
-        # are also passed to enable retrieval of the correct column data from the
-        # reference region.
-        # The procedure is performed wrt the region selected in the tree_panel widget as
-        # the reference region.
-        # Double normalisation procedure is:
-        # n  <- norm_ys/norm_ref_ys
-        # rn <- region_ys/region_ref_ys
-        # ys <- rn/n
+    def _x_ranges_match(self, region1, region2, rtol=1e-6):
+        ''' Verify that x-ranges of both regions match by checking that the start and end
+        points of xs in both regions are within tolerance rtol of the smallest division,
+        i.e. for n+1 samples within they should match within (x_max-x_min)/n*rtol
+        '''
+        xs = region1.get_x_axis()
+        xs_ref = region2.get_x_axis()
+        if np.allclose([xs[0], xs[-1]], [xs_ref[0], xs_ref[-1]],
+                       atol=(xs[-1]-xs[0])/(xs.size-1)*rtol):
+            return True
+        return False
 
-        tnr = tree_panel.norm_ref.region
+    def normalise_double(self, region, ys, series_name, ys_column):
+        ''' Double normalise a vector of y-values (ys) that belong to region (region).
+        Called for double normalisation of the channel_counts and extended_channels
+        vectors, but not the counts vector, which is dealt with by the
+        normalise_double_counts() method.
+        The column name (series_name) and column index (ys_column) are also passed to
+        enable retrieval of the correct column data from the reference region.
+        The procedure is performed wrt the region selected in the tree_panel widget as
+        the reference region.
+        Returns None if the x-ranges do not match
+        Double normalisation procedure is:
+        n  <- norm_ys/norm_ref_ys
+        rn <- region_ys/region_ref_ys
+        ys <- rn/n
+        '''
+        tnr = tree_panel.norm_ref
+
+        # verify that x-ranges of both regions match
+        if not self._x_ranges_match(region, tnr):
+            raise ValueError
+
         # n  <- norm_ys/norm_ref_ys
-        norm_channel = tnr.owner.selection.dbl_norm_ref
-        norm_ref_ys = tnr.extended_channels[:,norm_channel-1]
+        norm_channel = tnr.selection.dbl_norm_ref
+        norm_ref_ys = tnr.region.extended_channels[:,norm_channel-1]
         series_name_body = get_name_body(series_name)
-        print series_name_body, ys_column
         if series_name == 'counts':
-            norm_ys = tnr.counts
+            norm_ys = tnr.region.counts
         else:
-            norm_ys = tnr.__getattribute__(series_name_body)[:,ys_column-1]
+            norm_ys = tnr.region.__getattribute__(series_name_body)[:,ys_column-1]
         n = norm_ys / norm_ref_ys
 
         # rn <- region_ys/region_ref_ys
@@ -248,13 +269,48 @@ class TreePanel(HasTraits):
         # ys <- rn/n
         return rn / n
 
+    def normalise_double_counts(self, region):
+        ''' Double normalise the counts result in a region (region). It is theoretically
+        possible to disable contributions from counts_channels in the reference region
+        and for a different set of contributions in region to be disabled. Because of this
+        possibility, the double normalised counts will be computed by first summing
+        separately within the region and reference region and then dividing each sum by
+        the corresponding reference channel and finally dividing the normalised sums by
+        each other, i.e.
+        counts_i = sum_i {channel_counts_i|i=True}/r_i
+        counts_j = sum_j {channel_counts_j|j=True}/r_j
+        counts = counts_i/counts_j
+        Raises ValueError if the x-ranges do not match.
+        '''
+        # counts_i
+        # channel_counts is an n-column (n=9) x m-row array
+        # make a mask corresponding to the checkbox state then sum the corresponding columns
+        tnr = tree_panel.norm_ref
+
+        # verify that x-ranges of both regions match
+        if not self._x_ranges_match(region, tnr):
+            raise ValueError
+
+        # n  <- norm_ys/norm_ref_ys
+        norm_channel = tnr.selection.dbl_norm_ref
+        norm_ref_ys = tnr.region.extended_channels[:,norm_channel-1]
+        region_ref_ys = region.region.extended_channels[:,norm_channel-1]
+        counts_i = region.selection.compute_counts()
+        counts_j = tnr.selection.compute_counts()
+
+        return (counts_i / region_ref_ys) / (counts_j / norm_ref_ys)
+
     def normalise(self, region, ys, series_name=None, ys_column=None):
         ys = ys.copy()
         if self.get_normalisation_mode() == 'self':
             ys = self.normalise_self(region, ys)
         else:
             # get_normalisation_mode() return value 'double'
-            ys = self.normalise_double(region, ys, series_name, ys_column)
+            if series_name=='counts':
+                ys = self.normalise_double_counts(region)
+            else:
+                ys = self.normalise_double(region, ys, series_name, ys_column)
+#            ys = self.normalise_double(region, ys, series_name, ys_column)
         return ys
 
     def _file_save(self, path):
@@ -283,19 +339,26 @@ class TreePanel(HasTraits):
                         # counts data
                         ys = self.normalise(r, r.region.counts)
                         a.append(ys)
-    
+
                         cc_dict = r.selection.get_channel_counts_states()
                         # make a string indicating the channel_counts columns summed to
                         # obtain the counts column  
                         counts_label = '+'.join([str(get_name_num(i))
                                                  for i in sorted(cc_dict) if cc_dict[i]])
                         delimiter = {'space':' ', 'comma':',', 'tab':'\t'}[self.delimiter]
-    
+
                         # First header line
                         h = ''
                         h += '#"'
-                        if normalisation_ref != 'None':
-                            h += 'Normalised to:Extended channel {}, '.format(normalisation_ref)
+                        if self.get_normalisation_mode() == 'self':
+                            if normalisation_ref != 'None':
+                                h += 'Normalised to extended channel {}, '\
+                                    .format(normalisation_ref)
+                        else:
+                            # get_normalisation_mode() return value 'double'
+                            tnr = tree_panel.norm_ref
+                            h += 'Double normalised locally to extended channel {} against extended channel {} of region {}, '\
+                                .format(self.selection.dbl_norm_ref, tnr.selection.dbl_norm_ref, tnr.name)
                         h += 'Analyzer mode:{}'.format(r.region.scan_mode)
                         h += ', Dwell time:{}'.format(r.region.dwell_time)
                         h += ', Pass energy:{}'.format(r.region.pass_energy)
@@ -305,21 +368,21 @@ class TreePanel(HasTraits):
                         elif r.region.scan_mode=='ConstantFinalState':
                             h += ', Kinetic energy:{}'.format(r.region.kinetic_energy)
                         h += '"\n'
-    
+
                         # Second header line
                         h += '#'
                         h += {'FixedAnalyzerTransmission':'"Binding Axis"',
                               'ConstantFinalState'       :'"Excitation Axis"',
                              }.get(r.region.scan_mode,    '"Kinetic Axis"')
                         h += '{}"Counts {}"'.format(delimiter, counts_label)
-    
+
                         # channel_counts_n data
                         for name in sorted(r.selection.get_channel_counts_states()):
                             channel_num = get_name_num(name)
                             ys = self.normalise(r, r.region.channel_counts[:,channel_num-1])
                             a.append(ys)
                             h += '{}"Channel {} counts"'.format(delimiter, channel_num)
-    
+
                         # extended_channels_n data
                         for name in sorted(r.selection.get_extended_channels_states()):
                             channel_num = get_name_num(name)
@@ -336,6 +399,11 @@ class TreePanel(HasTraits):
                         normalisation_ok = False
                         normalisation_errors = True
                         h = 'Division errors normalising to Extended channel {}'.format(
+                            normalisation_ref)
+                    except ValueError:
+                        normalisation_ok = False
+                        normalisation_errors = True
+                        h = 'Errors double normalising to Extended channel {}'.format(
                             normalisation_ref)
 
                     # Write output
@@ -994,6 +1062,15 @@ class SelectorPanel(HasTraits):
         self.channel_counts_1 = not self.channel_counts_1 
         self.channel_counts_1 = not self.channel_counts_1 
 
+    def compute_counts(self):
+        # recompute counts
+        # channel_counts is an n-column (n=9) x m-row array
+        # make a mask corresponding to the checkbox state then sum the corresponding columns
+        cc_dict = self.get_channel_counts_states()
+        mask = np.array([cc_dict[i] for i in sorted(cc_dict)])
+        counts = self.region.region.channel_counts[:,mask].sum(axis=1)
+        return counts
+
     @on_trait_change('channel_counts_+')
     def _channel_counts_x_changed(self, container, trait, new):
         ''' Trait event handler
@@ -1005,12 +1082,7 @@ class SelectorPanel(HasTraits):
         else:
             self._remove_plot(self.region, trait)
 
-        # recompute counts
-        # channel_counts is an n-column (n=9) x m-row array
-        # make a mask corresponding to the checkbox state then sum the corresponding columns
-        cc_dict = self.get_channel_counts_states()
-        mask = np.array([cc_dict[i] for i in sorted(cc_dict)])
-        self.region.region.counts = self.region.region.channel_counts[:,mask].sum(axis=1)
+        self.region.region.counts = self.compute_counts()
 
         # update the counts series plot data
         # This is done by toggling the counts plot off and on again if it is currently on
@@ -1064,6 +1136,10 @@ class SelectorPanel(HasTraits):
         # If normalising, rescale here, which takes care of rendering correctly. This
         # strategy requires normalisation to be performed again at the export stage.
         try:
+#            if series_name=='counts':
+#                ys = tree_panel.normalise_double_counts(self.region)
+#            else:
+#                ys = tree_panel.normalise(self.region, ys, series_name, column)
             ys = tree_panel.normalise(self.region, ys, series_name, column)
         except (FloatingPointError, ValueError):
             ys = np.zeros_like(ys)  # do this so display reflects that normalisation failed
