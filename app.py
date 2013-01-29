@@ -387,6 +387,8 @@ class TreePanel(HasTraits):
         plot_panel.remove_all_plots(draw_layer='foreground')
         # Add any checked counts and channels to the plot window foreground layer
         self.selection.plot_checkbox_states()
+        # Reset the view limits
+        plot_panel.reset_view()
 
     def _group_dclick(self):
         '''
@@ -774,16 +776,23 @@ class PlotPanel(HasTraits):
         add_default_grids(plot)
         add_default_axes(plot)
 
-        # The PanTool allows panning around the plot
-        plot.tools.append(PanToolWithHistory(plot, drag_button='right'))
-
         # The ZoomTool tool is stateful and allows drawing a zoom
         # box to select a zoom region.
-        zoom = ClickUndoZoomTool(plot, tool_mode="box", always_on=True)
-        plot.overlays.append(zoom)
+        self.zoom_tool = ClickUndoZoomTool(plot, tool_mode="box", always_on=True)
+
+        # The PanTool allows panning around the plot
+        plot.tools.append(PanToolWithHistory(plot, drag_button='right',
+                          history_tool=self.zoom_tool))
+
+        plot.overlays.append(self.zoom_tool)
 
         return plot.value_mapper, plot.index_mapper
 
+    def reset_view(self):
+        self.plot.index_range.reset()
+        self.plot.value_range.reset()
+        self.zoom_tool.clear_undo_history()
+        
     traits_view =   View(
                         UItem(
                             'plot',
