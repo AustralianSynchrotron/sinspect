@@ -958,6 +958,9 @@ class SelectorPanel(HasTraits):
     bt_cycle_channel_counts = Button('All on/off')
     bt_cycle_extended_channels = Button('All on/off')
     dbl_norm_ref = Enum(1, 2, 3, 4, 5, 6, 7, 8, 9)(3)
+    text_divider = '/'
+    text_reflabel = 'ref:'
+    dbl_norm_ref_numerator = Enum('Counts', 1, 2, 3, 4, 5, 6, 7, 8, 9)(5)
     toggle_to_force_refresh = Bool(False)   # Used by the refresh_dbl_norm_ref() method 
 
     # error = Property(Bool, sync_to_view='counts.invalid')
@@ -990,6 +993,13 @@ class SelectorPanel(HasTraits):
 
     def _norm_reference_set(self):
         return tree_panel.lb_norm_ref != tree_panel.CONTEXT_MSG
+
+    def _is_norm_reference(self):
+        ''' True iff the currently selected region is currently set as the double
+        normalisation reference region
+        '''
+        a = tree_panel._norm_reference_set() and (self.region is tree_panel.norm_ref)
+        return tree_panel._norm_reference_set() and (self.region is tree_panel.norm_ref)
 
     def default_traits_view(self):
         '''
@@ -1034,7 +1044,11 @@ class SelectorPanel(HasTraits):
 
                 # extended channel double normalisation reference
                 group = HGroup()
-                group.content = [Item('dbl_norm_ref', label='ref:')]
+                group.content = [UItem('dbl_norm_ref_numerator', visible_when='object._is_norm_reference()', width=5.0),
+                                 UItem('text_divider', style='readonly', visible_when='object._is_norm_reference()'),
+                                 UItem('text_reflabel', style='readonly', visible_when='not object._is_norm_reference()'),
+                                 UItem('dbl_norm_ref')]
+#                group.content = [Item('dbl_norm_ref', label='ref:')]
                 group.show_border = True
                 group.label = 'Dbl nrm ref'
                 group.visible_when = 'object._norm_reference_set()'
