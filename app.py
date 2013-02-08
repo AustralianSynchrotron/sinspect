@@ -119,6 +119,98 @@ class SPECSRegion(HasTraits):
             label = '  {}{}'.format(self.name, empty_indicator)
         return label
 
+    def normalise_self(self, ys):
+        ''' Return a vector of ys normalised against the y-values in region indexed by
+        the tree_panel.extended_channel_ref drop-down selector. '''
+        normalisation_ref = tree_panel.extended_channel_ref
+        ys = ys.copy()
+        if normalisation_ref != 'None':
+            # normalisation_ref is in the range 1-9
+            ys /= self.region.extended_channels[:,normalisation_ref-1]
+        return ys
+
+    def _x_ranges_match(self, region, rtol=1e-6):
+        ''' Verify that x-range of this region matches the region passed as a parameter
+        by checking that the start and end points of xs in both regions are within
+        tolerance rtol of the smallest division,
+        i.e. for n+1 samples within they should match within (x_max-x_min)/n*rtol
+        '''
+        xs = self.get_x_axis()
+        xs_ref = region.get_x_axis()
+        if np.allclose([xs[0], xs[-1]], [xs_ref[0], xs_ref[-1]],
+                       atol=(xs[-1]-xs[0])/(xs.size-1)*rtol):
+            return True
+        return False
+
+    def _e_r(self):
+        ''' Computes the e_r term described in the SinSPECt Sphinx docs. '''
+        r = self.selection.dbl_norm_ref
+        return self.region.extended_channels[:,r-1]
+
+    def _MR(self, R, s):
+        ''' Computes the M^R term described in the SinSPECt Sphinx docs.
+        R is the reference region.
+        s is the value from the Enum {'Counts', 1..9} of the drop-down menu selection.
+        '''
+        if s == 'Counts':
+            # M^R = C^R
+            mr = R.selection.compute_counts()
+        else:
+            # s in {1..9}: M^R = e^R_s
+            mr = R.region.extended_channels[:,s-1]
+        return mr
+
+    def double_normalisation_denominator(self, R, s):
+        ''' Computes the denominator term M^R/e^R_r described in the SinSPECt Sphinx docs.
+        R is the reference region.
+        s is the value from the Enum {'Counts', 1..9} of the drop-down menu selection.
+        '''
+        mr = self._MR(R, s)
+        e = R.region.extended_channels[:,R.selection.dbl_norm_ref-1]
+        return mr / e
+
+    def double_normalise_channel(self, series_name):
+        ''' Computes the double-normalised channel counts c''_i or
+        extended channel counts e''_i for the channel or extended channel named
+        series_name within this region.
+        See the SinSPECt Sphinx docs for a definition.
+        Raises ValueError if the x-ranges of this region and the normalisation reference
+        do not match.
+        '''
+        # Get the normalisation reference region from the tree panel 
+        R = tree_panel.norm_ref
+
+        # verify that our x-range matches that of the reference region
+        if not self._x_ranges_match(R):
+            raise ValueError
+
+        series_name_body = get_name_body(series_name)
+        series_name_num = get_name_num(series_name)
+        c_or_e_i = self.region.__getattribute__(series_name_body)[:,series_name_num-1]
+        numer = c_or_e_i / self._e_r()
+
+        s = R.selection.dbl_norm_ref_numerator
+        denom = self.double_normalisation_denominator(R, s)
+
+        return numer / denom
+
+    def double_normalise_counts(self):
+        ''' Computes the double-normalised counts C'' for this region.
+        See the SinSPECt Sphinx docs for a definition.
+        Raises ValueError if the x-ranges do not match.
+        '''
+        # Get the normalisation reference region from the tree panel 
+        R = tree_panel.norm_ref
+
+        # verify that our x-range matches that of the reference region
+        if not self._x_ranges_match(R):
+            raise ValueError
+
+        s = R.selection.dbl_norm_ref_numerator
+        numer = self.selection.compute_counts() / self._e_r()
+        denom = self.double_normalisation_denominator(R, s)
+        return numer / denom
+
 
 class SPECSGroup(HasTraits):
     ''' A group node in the TreeEditor '''
@@ -209,22 +301,40 @@ class TreePanel(HasTraits):
             pass
         GUI.set_busy(False)                     # reset hourglass       @UndefinedVariable
 
-    def _renormalise(self, region, ys):
-        ys = ys.copy()
-        normalisation_channel = tree_panel.extended_channel_ref
-        if normalisation_channel != 'None':
-            # normalisation_channel is in the range 1-9
-            ys /= region.region.extended_channels[:,normalisation_channel-1]
+    def _x_ranges_match(self, region1, region2, rtol=1e-6):
+        ''' Verify that x-ranges of both regions match by checking that the start and end
+        points of xs in both regions are within tolerance rtol of the smallest division,
+        i.e. for n+1 samples within they should match within (x_max-x_min)/n*rtol
+        '''
+        xs = region1.get_x_axis()
+        xs_ref = region2.get_x_axis()
+        if np.allclose([xs[0], xs[-1]], [xs_ref[0], xs_ref[-1]],
+                       atol=(xs[-1]-xs[0])/(xs.size-1)*rtol):
+            return True
+        return False
+
+    def normalise(self, region, ys, series_name):
+        mode = self.get_normalisation_mode()
+        if mode == 'self':
+            if (get_name_body(series_name)!='extended_channels') or \
+               (get_name_num(series_name)!=tree_panel.extended_channel_ref):
+                ys = region.normalise_self(ys)
+        elif mode == 'double':
+            if series_name=='counts':
+                ys = region.double_normalise_counts()
+            else:
+                if (get_name_body(series_name)!='extended_channels') or \
+                   (get_name_num(series_name)!=region.selection.dbl_norm_ref):
+                    ys = region.double_normalise_channel(series_name)
         return ys
 
-    def get_normalisation_mode(self):
-        ''' Returns the current normalisation mode, which will be
-        one of 'self' or 'double'
-        '''
-        if self._norm_reference_set():
-            return 'double'
-        else:
-            return 'self'
+    def _get_counts_label_for_region(self, r):
+        cc_dict = r.selection.get_channel_counts_states()
+        # make a string indicating the channel_counts columns summed to
+        # obtain the counts column  
+        counts_label = '+'.join([str(get_name_num(i))
+                                 for i in sorted(cc_dict) if cc_dict[i]])
+        return counts_label
 
     def _file_save(self, path):
         ''' Saves all regions set for export into a directory hierarchy rooted at path '''
@@ -250,21 +360,28 @@ class TreePanel(HasTraits):
                     normalisation_ok = True
                     try:
                         # counts data
-                        ys = self._renormalise(r, r.region.counts)
+                        ys = self.normalise(r, r.region.counts, series_name='counts')
                         a.append(ys)
-    
-                        cc_dict = r.selection.get_channel_counts_states()
-                        # make a string indicating the channel_counts columns summed to
-                        # obtain the counts column  
-                        counts_label = '+'.join([str(get_name_num(i))
-                                                 for i in sorted(cc_dict) if cc_dict[i]])
+
+                        counts_label = self._get_counts_label_for_region(r)
                         delimiter = {'space':' ', 'comma':',', 'tab':'\t'}[self.delimiter]
-    
+
                         # First header line
                         h = ''
                         h += '#"'
-                        if normalisation_ref != 'None':
-                            h += 'Normalised to:Extended channel {}, '.format(normalisation_ref)
+                        mode = self.get_normalisation_mode()
+                        if mode == 'self':
+                            h += 'Normalised to extended channel {}, '\
+                                .format(normalisation_ref)
+                        elif mode == 'double':
+                            R = tree_panel.norm_ref
+                            s = R.selection.dbl_norm_ref_numerator
+                            d = R.selection.dbl_norm_ref
+                            if s == 'Counts':
+                                s = 'Counts {}'.format(self._get_counts_label_for_region(R))
+                            h += 'Double normalised {} to {}:{}/{}, '\
+                                .format(r.selection.dbl_norm_ref, R.name, s, d)
+
                         h += 'Analyzer mode:{}'.format(r.region.scan_mode)
                         h += ', Dwell time:{}'.format(r.region.dwell_time)
                         h += ', Pass energy:{}'.format(r.region.pass_energy)
@@ -274,37 +391,49 @@ class TreePanel(HasTraits):
                         elif r.region.scan_mode=='ConstantFinalState':
                             h += ', Kinetic energy:{}'.format(r.region.kinetic_energy)
                         h += '"\n'
-    
+
                         # Second header line
                         h += '#'
                         h += {'FixedAnalyzerTransmission':'"Binding Axis"',
                               'ConstantFinalState'       :'"Excitation Axis"',
                              }.get(r.region.scan_mode,    '"Kinetic Axis"')
                         h += '{}"Counts {}"'.format(delimiter, counts_label)
-    
+
                         # channel_counts_n data
                         for name in sorted(r.selection.get_channel_counts_states()):
                             channel_num = get_name_num(name)
-                            ys = self._renormalise(r, r.region.channel_counts[:,channel_num-1])
+                            ys = r.region.channel_counts[:,channel_num-1]
+                            ys = self.normalise(r, ys, series_name=name)
                             a.append(ys)
                             h += '{}"Channel {} counts"'.format(delimiter, channel_num)
-    
+
                         # extended_channels_n data
                         for name in sorted(r.selection.get_extended_channels_states()):
                             channel_num = get_name_num(name)
                             ys = r.region.extended_channels[:,channel_num-1]
-                            # Skipping normalisation of the extended channel used as the
-                            # reference allows the normalisation to be undone from the
-                            # exported data if desired. Without skipping, the reference column
-                            # would be all ones and such reversion would not be possible.
-                            if channel_num != normalisation_ref:
-                                ys = self._renormalise(r, ys)
+                            ys = self.normalise(r, ys, series_name=name)
                             a.append(ys)
                             h += '{}"Extended channel {}"'.format(delimiter, channel_num)
+
+                        # append double-normalisation reference data
+                        if mode == 'double':
+                            R = tree_panel.norm_ref
+                            s = R.selection.dbl_norm_ref_numerator
+                            d = R.selection.dbl_norm_ref
+                            ys = r.double_normalisation_denominator(R, s)
+                            a.append(ys)
+                            if s == 'Counts':
+                                s = 'Counts {}'.format(self._get_counts_label_for_region(R))
+                            h += '{}"{}:{}/{}"'.format(delimiter, R.name, s, d)
                     except FloatingPointError:
                         normalisation_ok = False
                         normalisation_errors = True
                         h = 'Division errors normalising to Extended channel {}'.format(
+                            normalisation_ref)
+                    except ValueError:
+                        normalisation_ok = False
+                        normalisation_errors = True
+                        h = 'Errors double normalising to Extended channel {}'.format(
                             normalisation_ref)
 
                     # Write output
@@ -353,6 +482,16 @@ class TreePanel(HasTraits):
 
     def _norm_reference_set(self):
         return self.lb_norm_ref != self.CONTEXT_MSG
+
+    def get_normalisation_mode(self):
+        ''' Returns the current normalisation mode: one of 'none', 'self' or 'double'
+        '''
+        if self._norm_reference_set():
+            return 'double'
+        elif tree_panel.extended_channel_ref == 'None':
+            return 'none'
+        else:
+            return 'self'
 
     def _group_select(self):
         # print 'gs', self.name
@@ -850,10 +989,11 @@ class SelectorPanel(HasTraits):
     cycle_extended_channels_state = Enum('all_on', 'all_off')('all_off')
     bt_cycle_channel_counts = Button('All on/off')
     bt_cycle_extended_channels = Button('All on/off')
+    dbl_norm_ref_numerator = Enum('Counts', 1, 2, 3, 4, 5, 6, 7, 8, 9)(2)
     dbl_norm_ref = Enum(1, 2, 3, 4, 5, 6, 7, 8, 9)(3)
+    text_divider = '/'
+    text_reflabel = 'ref:'
     toggle_to_force_refresh = Bool(False)   # Used by the refresh_dbl_norm_ref() method 
-
-    # error = Property(Bool, sync_to_view='counts.invalid')
 
     def __init__(self, region=None, **traits):
         super(SelectorPanel, self).__init__(**traits)   # HasTraits.__init__(self, **traits)
@@ -883,6 +1023,12 @@ class SelectorPanel(HasTraits):
 
     def _norm_reference_set(self):
         return tree_panel.lb_norm_ref != tree_panel.CONTEXT_MSG
+
+    def _is_norm_reference(self):
+        ''' True iff the currently selected region is currently set as the double
+        normalisation reference region
+        '''
+        return tree_panel._norm_reference_set() and (self.region is tree_panel.norm_ref)
 
     def default_traits_view(self):
         '''
@@ -927,7 +1073,10 @@ class SelectorPanel(HasTraits):
 
                 # extended channel double normalisation reference
                 group = HGroup()
-                group.content = [Item('dbl_norm_ref', label='ref:')]
+                group.content = [UItem('dbl_norm_ref_numerator', visible_when='object._is_norm_reference()', width=5.0),
+                                 UItem('text_divider', style='readonly', visible_when='object._is_norm_reference()'),
+                                 UItem('text_reflabel', style='readonly', visible_when='not object._is_norm_reference()'),
+                                 UItem('dbl_norm_ref')]
                 group.show_border = True
                 group.label = 'Dbl nrm ref'
                 group.visible_when = 'object._norm_reference_set()'
@@ -957,6 +1106,23 @@ class SelectorPanel(HasTraits):
             self._remove_plot(self.region, trait)
         self.region.update_label()
 
+    def refresh_counts(self):
+        ''' Refresh counts computation and plot series by toggling one of the
+        channel_counts_ series to cause a _channel_counts_x_changed() trait change event.
+        '''
+        self.channel_counts_1 = not self.channel_counts_1 
+        self.channel_counts_1 = not self.channel_counts_1 
+
+    def compute_counts(self):
+        ''' compute counts
+        channel_counts is an n-column (n=9) x m-row array
+        Make a mask corresponding to the checkbox state then sum the corresponding columns
+        '''
+        cc_dict = self.get_channel_counts_states()
+        mask = np.array([cc_dict[i] for i in sorted(cc_dict)])
+        counts = self.region.region.channel_counts[:,mask].sum(axis=1)
+        return counts
+
     @on_trait_change('channel_counts_+')
     def _channel_counts_x_changed(self, container, trait, new):
         ''' Trait event handler
@@ -964,16 +1130,11 @@ class SelectorPanel(HasTraits):
         '''
         # add or remove the channel counts plot from screen
         if new:
-            self._add_plot(self.region, trait, get_name_num(trait))
+            self._add_plot(self.region, trait)
         else:
             self._remove_plot(self.region, trait)
 
-        # recompute counts
-        # channel_counts is an n-column (n=9) x m-row array
-        # make a mask corresponding to the checkbox state then sum the corresponding columns
-        cc_dict = self.get_channel_counts_states()
-        mask = np.array([cc_dict[i] for i in sorted(cc_dict)])
-        self.region.region.counts = self.region.region.channel_counts[:,mask].sum(axis=1)
+        self.region.region.counts = self.compute_counts()
 
         # update the counts series plot data
         # This is done by toggling the counts plot off and on again if it is currently on
@@ -994,10 +1155,13 @@ class SelectorPanel(HasTraits):
         An extended_channels_n checkbox was toggled
         '''
         if new:
-            self._add_plot(self.region, trait, get_name_num(trait))
+            self._add_plot(self.region, trait)
         else:
             self._remove_plot(self.region, trait)
         self.region.update_label()
+
+    def _dbl_norm_ref_changed(self):
+        self._refresh_current_view()
 
     def _name_plot(self, region, series_name):
         ''' Make a unique name based on the group_name, region_name and series_name parts
@@ -1006,35 +1170,34 @@ class SelectorPanel(HasTraits):
         '''
         return '_'.join([region.group.name, region.name, series_name])
 
-    def _add_plot(self, region, series_name, column=None):
+    def _add_plot(self, region, series_name):
         ''' Adds a plot to the chaco plot widget. '''
         name = self._name_plot(region, series_name)
         xs = self.region.get_x_axis()
         if series_name == 'counts':
+            series_name_body = 'counts'
             ys = self.region.region.counts
         else:
             # Get 'first_second' part of the name 'first_second_n' which will either be
             # 'channel_counts' or 'extended_channels'. Then use this to retrieve the
             # matching array from the specs.SPECSRegion object.
-            series_name = get_name_body(series_name)
-            ys = self.region.region.__getattribute__(series_name)[:,column-1]
+            series_name_body = get_name_body(series_name)
+            series_name_num = get_name_num(series_name)
+            ys = self.region.region.__getattribute__(series_name_body)[:,series_name_num-1]
         ys = ys.copy()      # deepcopy in anticipation of having to renormalise the data
 
         # If normalising, rescale here, which takes care of rendering correctly. This
         # strategy requires normalisation to be performed again at the export stage.
-        normalisation_ref = tree_panel.extended_channel_ref
-        if normalisation_ref != 'None':
-            # normalisation_ref is in the range 1-9
-            try:
-                ys /= self.region.region.extended_channels[:,normalisation_ref-1]
-            except FloatingPointError:
-                pass
+        try:
+            ys = tree_panel.normalise(self.region, ys, series_name)
+        except (FloatingPointError, ValueError):
+            ys = np.zeros_like(ys)  # do this so display reflects that normalisation failed
 
         line_attributes = { \
             'counts'            : {'color':'black', 'width':2.0},
             'channel_counts'    : {'color':'blue' , 'width':1.5},
             'extended_channels' : {'color':'red'  , 'width':1.5},
-            }[series_name]
+            }[series_name_body]
         plot_panel.add_plot(name, xs, ys, **line_attributes)
 
     def _remove_plot(self, region, series_name):
@@ -1060,11 +1223,8 @@ class SelectorPanel(HasTraits):
         trait_dict = self.get_trait_states()
         for trait, val in trait_dict.iteritems():
             if val:
-                if trait=='counts':
-                    self._add_plot(self.region, trait)
-                else:
-                    # channel_counts_+, extended_channels_+
-                    self._add_plot(self.region, trait, get_name_num(trait))
+                # counts, channel_counts_+, extended_channels_+
+                self._add_plot(self.region, trait)
 
     def get_trait_states(self):
         ''' Return a dictionary of all trait_name:value entries with associated
