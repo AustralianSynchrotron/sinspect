@@ -1,11 +1,15 @@
 SinSPECt: A data browser for exploring Soft X-Ray Spectra
 =========================================================
 
-SinSPECt (Soft x-ray spectrum INSPECTor)
-is a BSD-licensed data explorer for the Soft X-Ray spectroscopy data.
+SinSPECt (Soft x-ray spectrum inSPECTor)
+is a BSD-licensed data explorer for Soft X-Ray spectroscopy data stored in the SPECS XML format.
 
 Features
 --------
+Reads SPECS XML format files saved from SpecsLab2
+Graphical exploration of data regions.
+Exports columnar ASCII with choice of delimiter and optional headers.
+Supports normalisation of data to internally available data channels.
 
 Requirements
 ------------
