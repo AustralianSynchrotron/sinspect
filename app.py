@@ -138,7 +138,7 @@ class SPECSRegion(HasTraits):
         xs = self.get_x_axis()
         xs_ref = region.get_x_axis()
         if np.allclose([xs[0], xs[-1]], [xs_ref[0], xs_ref[-1]],
-                       atol=(xs[-1]-xs[0])/(xs.size-1)*rtol):
+                       atol=(xs[-1]-xs[0])/(xs.size-1)*rtol) and (xs.size==xs_ref.size):
             return True
         return False
 
@@ -270,6 +270,7 @@ class TreePanel(HasTraits):
     bt_export_file = Button('Export...')
     bt_copy_to_selection = Button('Paste')
     bt_clear_reference = Button('Clear')
+    bt_set_reference = Button('Set region')
     lb_ref = Str(CONTEXT_MSG)
     lb_norm_ref = Str(CONTEXT_MSG)
     extended_channel_ref = Enum('None', 1, 2, 3, 4, 5, 6, 7, 8, 9)('None')
@@ -353,8 +354,10 @@ class TreePanel(HasTraits):
         # then append counts, channel_counts and extended_channels as
         # appropriate.
 
-        # x-axis data
-        a = [r.get_x_axis()]
+        err_msg = ''
+        h = ''
+        delimiter = {'space':' ', 'comma':',', 'tab':'\t'}[self.delimiter]
+        a = [r.get_x_axis()]            # x-axis data
 
         normalisation_ref = tree_panel.extended_channel_ref
         normalisation_ok = True         # Reset region-specific error flag
@@ -364,10 +367,8 @@ class TreePanel(HasTraits):
             a.append(ys)
 
             counts_label = self._get_counts_label_for_region(r)
-            delimiter = {'space':' ', 'comma':',', 'tab':'\t'}[self.delimiter]
 
             # First header line
-            h = ''
             h += '#"'
             mode = self.get_normalisation_mode()
             if mode == 'self':
@@ -421,16 +422,26 @@ class TreePanel(HasTraits):
                 if s == 'Counts':
                     s = 'Counts {}'.format(self._get_counts_label_for_region(R))
                 h += '{}"{}:{}/{}"'.format(delimiter, R.name, s, d)
+
+            # Deal with any errors created in normalising data
+            a = np.array(a)
+            mask = np.isinf(a) | np.isnan(a)
+            a[mask] = -1
+            if True in mask:
+                normalisation_ok = False
+                normalisation_errors = True
+                err_msg = '# Errors were generated while normalising and have been set to -1'
+
         except FloatingPointError:
             normalisation_ok = False
             normalisation_errors = True
-            h = 'Division errors normalising to Extended channel {}'.format(
+            err_msg = '# Unexpected floating point errors normalising to Extended channel {}'.format(
                 normalisation_ref)
         except ValueError:
             normalisation_ok = False
             normalisation_errors = True
             R, s, d = self._get_double_normalisation_channels()
-            h = 'Errors double normalising to {}:{}/{}'.format(R.name, s, d)
+            err_msg = '# Energy ranges differ in double normalisation reference {}:{}/{}'.format(R.name, s, d)
 
         # Write output
         try:
@@ -445,15 +456,17 @@ class TreePanel(HasTraits):
         else:
             filename = os.path.join(dirname, 'ERRORS_{}.xy'.format(r.name))
         with open(filename, 'w') as f:
+            if err_msg != '':
+                print >> f, err_msg
             if self.cb_header:
                 # Output header
                 print >> f, h
-            if normalisation_ok:
-                # Output data
-                a = np.array(a).transpose()
-                np.savetxt(f, a, fmt='%1.8g', delimiter=delimiter)
+            # Output data
+            a = np.array(a).transpose()
+            np.savetxt(f, a, fmt='%1.8g', delimiter=delimiter)
+
             print filename, 'written'
-        return h, normalisation_errors        # return h which will contain any error message if one occurred
+        return err_msg, normalisation_errors        # return err_msg which will contain any error message if one occurred
 
     def _file_save(self, path):
         ''' Saves all regions set for export into a directory hierarchy rooted at path '''
@@ -513,6 +526,13 @@ class TreePanel(HasTraits):
                 if isinstance(r, SPECSRegion):
                     # paste all counts, channel_counts_ and extended_channels_ states
                     r.selection.set(**trait_dict)
+
+    def _bt_set_reference_changed(self):
+        ''' Sets the current tree node object as the source for normalisation. '''
+        tree_panel.norm_ref = tree_panel.node_selection[0]
+        tree_panel.lb_norm_ref = tree_panel.norm_ref.name
+        # Now refresh the selection panel to force its drop-down selector to appear
+        tree_panel.node_selection[0].selection.refresh_dbl_norm_ref()
 
     def _extended_channel_ref_changed(self):
         ''' If the normalisation channel drop-down selection is changed, force a refresh
@@ -699,17 +719,23 @@ class TreePanel(HasTraits):
                                 spring,
                                 UItem('bt_copy_to_selection', enabled_when='object._reference_set()'),
                             ),
-                            label = 'Selection',
+                            label = 'Paste selection region',
+                            show_border = True,
+                        ),
+                        VGroup(
+                            HGroup(
+                                Item('extended_channel_ref', label='ref:', enabled_when='object._has_data() and not object._norm_reference_set()')
+                            ),
+                            label = 'Normalisation by chosen I0',
                             show_border = True,
                         ),
                         VGroup(
                             HGroup(
                                 Item('lb_norm_ref', label='Region', style='readonly'),
-                                spring,
-                                Item('extended_channel_ref', label='ref:', enabled_when='object._has_data() and not object._norm_reference_set()')
                             ),
+                            UItem('bt_set_reference', visible_when='not object._norm_reference_set()', enabled_when='object._has_data()'),
                             UItem('bt_clear_reference', visible_when='object._norm_reference_set()'),
-                            label = 'Normalisation',
+                            label = 'Double normalisation by chosen spectrum',
                             show_border = True,
                         ),
                         UItem(
@@ -1411,7 +1437,8 @@ All rights reserved.
 
 
 if __name__ == "__main__":
-    np.seterr(divide='raise', invalid='raise')
+#    np.seterr(divide='raise', invalid='raise')
+    np.seterr(divide='ignore', invalid='ignore')
     tree_panel = TreePanel(specs_file=SpecsFile())
     selector_panel = SelectorPanel()
     plot_panel = PlotPanel()
