@@ -336,12 +336,130 @@ class TreePanel(HasTraits):
                                  for i in sorted(cc_dict) if cc_dict[i]])
         return counts_label
 
+    def _get_double_normalisation_channels(self):
+        ''' Return the normalisation reference region and the numerator and
+        denominator selections of that region '''
+        R = tree_panel.norm_ref
+        s = R.selection.dbl_norm_ref_numerator
+        d = R.selection.dbl_norm_ref
+        return R, s, d
+
+    def _export_region(self, r, dirname, normalisation_errors):
+        ''' Exports region r into the directory dirname. The directory is created as
+        needed. normalisation_errors is a flag that keeps track of whether any such
+        errors occurred.
+        '''
+        # variable a holds the columnar count data. Start with the x-axis
+        # then append counts, channel_counts and extended_channels as
+        # appropriate.
+
+        # x-axis data
+        a = [r.get_x_axis()]
+
+        normalisation_ref = tree_panel.extended_channel_ref
+        normalisation_ok = True         # Reset region-specific error flag
+        try:
+            # counts data
+            ys = self.normalise(r, r.region.counts, series_name='counts')
+            a.append(ys)
+
+            counts_label = self._get_counts_label_for_region(r)
+            delimiter = {'space':' ', 'comma':',', 'tab':'\t'}[self.delimiter]
+
+            # First header line
+            h = ''
+            h += '#"'
+            mode = self.get_normalisation_mode()
+            if mode == 'self':
+                h += 'Normalised to extended channel {}, '\
+                    .format(normalisation_ref)
+            elif mode == 'double':
+                R, s, d = self._get_double_normalisation_channels()
+                if s == 'Counts':
+                    s = 'Counts {}'.format(self._get_counts_label_for_region(R))
+                h += 'Double normalised {} to {}:{}/{}, '\
+                    .format(r.selection.dbl_norm_ref, R.name, s, d)
+
+            h += 'Analyzer mode:{}'.format(r.region.scan_mode)
+            h += ', Dwell time:{}'.format(r.region.dwell_time)
+            h += ', Pass energy:{}'.format(r.region.pass_energy)
+            h += ', Lens mode:{}'.format(r.region.analyzer_lens)
+            if r.region.scan_mode=='FixedAnalyzerTransmission':
+                h += ', Excitation energy:{}'.format(r.region.excitation_energy)
+            elif r.region.scan_mode=='ConstantFinalState':
+                h += ', Kinetic energy:{}'.format(r.region.kinetic_energy)
+            h += '"\n'
+
+            # Second header line
+            h += '#'
+            h += {'FixedAnalyzerTransmission':'"Binding Axis"',
+                  'ConstantFinalState'       :'"Excitation Axis"',
+                 }.get(r.region.scan_mode,    '"Kinetic Axis"')
+            h += '{}"Counts {}"'.format(delimiter, counts_label)
+
+            # channel_counts_n data
+            for name in sorted(r.selection.get_channel_counts_states()):
+                channel_num = get_name_num(name)
+                ys = r.region.channel_counts[:,channel_num-1]
+                ys = self.normalise(r, ys, series_name=name)
+                a.append(ys)
+                h += '{}"Channel {} counts"'.format(delimiter, channel_num)
+
+            # extended_channels_n data
+            for name in sorted(r.selection.get_extended_channels_states()):
+                channel_num = get_name_num(name)
+                ys = r.region.extended_channels[:,channel_num-1]
+                ys = self.normalise(r, ys, series_name=name)
+                a.append(ys)
+                h += '{}"Extended channel {}"'.format(delimiter, channel_num)
+
+            # optionally append double-normalisation reference data
+            if mode == 'double':
+                R, s, d = self._get_double_normalisation_channels()
+                ys = r.double_normalisation_denominator(R, s)
+                a.append(ys)
+                if s == 'Counts':
+                    s = 'Counts {}'.format(self._get_counts_label_for_region(R))
+                h += '{}"{}:{}/{}"'.format(delimiter, R.name, s, d)
+        except FloatingPointError:
+            normalisation_ok = False
+            normalisation_errors = True
+            h = 'Division errors normalising to Extended channel {}'.format(
+                normalisation_ref)
+        except ValueError:
+            normalisation_ok = False
+            normalisation_errors = True
+            R, s, d = self._get_double_normalisation_channels()
+            h = 'Errors double normalising to {}:{}/{}'.format(R.name, s, d)
+
+        # Write output
+        try:
+            os.mkdir(dirname)   # Try creating directory
+        except OSError:
+            # Something exists already, or it can't be written
+            # Maybe give a nice message here
+            pass
+
+        if normalisation_ok:
+            filename = os.path.join(dirname, r.name+'.xy')
+        else:
+            filename = os.path.join(dirname, 'ERRORS_{}.xy'.format(r.name))
+        with open(filename, 'w') as f:
+            if self.cb_header:
+                # Output header
+                print >> f, h
+            if normalisation_ok:
+                # Output data
+                a = np.array(a).transpose()
+                np.savetxt(f, a, fmt='%1.8g', delimiter=delimiter)
+            print filename, 'written'
+        return h, normalisation_errors        # return h which will contain any error message if one occurred
+
     def _file_save(self, path):
         ''' Saves all regions set for export into a directory hierarchy rooted at path '''
         # Export all regions in all groups
-        normalisation_errors = False
+        normalisation_errors = False            # Reset error flag
         for g in self.specs_file.specs_groups:
-            dir_created_for_this_group = False
             for r in g.specs_regions:
                 # make file region.name+'.xy' in directory g.name
                 # print g.name, r.name
@@ -349,120 +467,11 @@ class TreePanel(HasTraits):
                 # x-axis, counts, channel_counts_n and extended_channels_n
 
                 if r.selection.counts:
-                    # variable a holds the columnar count data. Start with the x-axis
-                    # then append counts, channel_counts and extended_channels as
-                    # appropriate.
-
-                    # x-axis data
-                    a = [r.get_x_axis()]
-
-                    normalisation_ref = tree_panel.extended_channel_ref
-                    normalisation_ok = True
-                    try:
-                        # counts data
-                        ys = self.normalise(r, r.region.counts, series_name='counts')
-                        a.append(ys)
-
-                        counts_label = self._get_counts_label_for_region(r)
-                        delimiter = {'space':' ', 'comma':',', 'tab':'\t'}[self.delimiter]
-
-                        # First header line
-                        h = ''
-                        h += '#"'
-                        mode = self.get_normalisation_mode()
-                        if mode == 'self':
-                            h += 'Normalised to extended channel {}, '\
-                                .format(normalisation_ref)
-                        elif mode == 'double':
-                            R = tree_panel.norm_ref
-                            s = R.selection.dbl_norm_ref_numerator
-                            d = R.selection.dbl_norm_ref
-                            if s == 'Counts':
-                                s = 'Counts {}'.format(self._get_counts_label_for_region(R))
-                            h += 'Double normalised {} to {}:{}/{}, '\
-                                .format(r.selection.dbl_norm_ref, R.name, s, d)
-
-                        h += 'Analyzer mode:{}'.format(r.region.scan_mode)
-                        h += ', Dwell time:{}'.format(r.region.dwell_time)
-                        h += ', Pass energy:{}'.format(r.region.pass_energy)
-                        h += ', Lens mode:{}'.format(r.region.analyzer_lens)
-                        if r.region.scan_mode=='FixedAnalyzerTransmission':
-                            h += ', Excitation energy:{}'.format(r.region.excitation_energy)
-                        elif r.region.scan_mode=='ConstantFinalState':
-                            h += ', Kinetic energy:{}'.format(r.region.kinetic_energy)
-                        h += '"\n'
-
-                        # Second header line
-                        h += '#'
-                        h += {'FixedAnalyzerTransmission':'"Binding Axis"',
-                              'ConstantFinalState'       :'"Excitation Axis"',
-                             }.get(r.region.scan_mode,    '"Kinetic Axis"')
-                        h += '{}"Counts {}"'.format(delimiter, counts_label)
-
-                        # channel_counts_n data
-                        for name in sorted(r.selection.get_channel_counts_states()):
-                            channel_num = get_name_num(name)
-                            ys = r.region.channel_counts[:,channel_num-1]
-                            ys = self.normalise(r, ys, series_name=name)
-                            a.append(ys)
-                            h += '{}"Channel {} counts"'.format(delimiter, channel_num)
-
-                        # extended_channels_n data
-                        for name in sorted(r.selection.get_extended_channels_states()):
-                            channel_num = get_name_num(name)
-                            ys = r.region.extended_channels[:,channel_num-1]
-                            ys = self.normalise(r, ys, series_name=name)
-                            a.append(ys)
-                            h += '{}"Extended channel {}"'.format(delimiter, channel_num)
-
-                        # append double-normalisation reference data
-                        if mode == 'double':
-                            R = tree_panel.norm_ref
-                            s = R.selection.dbl_norm_ref_numerator
-                            d = R.selection.dbl_norm_ref
-                            ys = r.double_normalisation_denominator(R, s)
-                            a.append(ys)
-                            if s == 'Counts':
-                                s = 'Counts {}'.format(self._get_counts_label_for_region(R))
-                            h += '{}"{}:{}/{}"'.format(delimiter, R.name, s, d)
-                    except FloatingPointError:
-                        normalisation_ok = False
-                        normalisation_errors = True
-                        h = 'Division errors normalising to Extended channel {}'.format(
-                            normalisation_ref)
-                    except ValueError:
-                        normalisation_ok = False
-                        normalisation_errors = True
-                        h = 'Errors double normalising to Extended channel {}'.format(
-                            normalisation_ref)
-
-                    # Write output
-                    if not dir_created_for_this_group:
-                        # Try creating directory if it doesn't exist
-                        try:
-                            dirname = os.path.join(path, g.name)
-                            os.mkdir(dirname)
-                            dir_created_for_this_group = True
-                        except OSError:
-                            # Something exists already, or it can't be written
-                            # Maybe give a nice message here
-                            pass
-
-                    if normalisation_ok:
-                        filename = os.path.join(dirname, r.name+'.xy')
-                    else:
-                        filename = os.path.join(dirname, 'ERRORS_{}.xy'.format(r.name))
-                    with open(filename, 'w') as f:
-                        if self.cb_header:
-                            # Output header
-                            print >> f, h
-                        if normalisation_ok:
-                            # Output data
-                            a = np.array(a).transpose()
-                            np.savetxt(f, a, fmt='%1.8g', delimiter=delimiter)
-                        print filename, 'written'
+                    dir_path = os.path.join(path, g.name)
+                    h, normalisation_errors = \
+                        self._export_region(r, dir_path, normalisation_errors)
         if normalisation_errors:
-            error(None, h)
+            error(None, h)          # throw up an error message dialog
 
     def _bt_export_file_changed(self):
         ''' Event handler
@@ -1073,7 +1082,7 @@ class SelectorPanel(HasTraits):
 
                 # extended channel double normalisation reference
                 group = HGroup()
-                group.content = [UItem('dbl_norm_ref_numerator', visible_when='object._is_norm_reference()', width=5.0),
+                group.content = [UItem('dbl_norm_ref_numerator', visible_when='object._is_norm_reference()'),
                                  UItem('text_divider', style='readonly', visible_when='object._is_norm_reference()'),
                                  UItem('text_reflabel', style='readonly', visible_when='not object._is_norm_reference()'),
                                  UItem('dbl_norm_ref')]
@@ -1084,6 +1093,11 @@ class SelectorPanel(HasTraits):
 
             group1.label = self.region.name
             group1.show_border = True
+            # Ideally, the next commented-out line would work, but this thread points to a
+            # problem: http://thread.gmane.org/gmane.comp.python.enthought.devel/22603
+            # group1.layout = 'flow'
+            # Setting group.show_border = False does partially work, but leaves buttons
+            # visible that shouldn't be.
             items.append(group1)
         return View(*items)
 
@@ -1160,7 +1174,8 @@ class SelectorPanel(HasTraits):
             self._remove_plot(self.region, trait)
         self.region.update_label()
 
-    def _dbl_norm_ref_changed(self):
+    @on_trait_change('dbl_norm_ref, dbl_norm_ref_numerator')
+    def _dbl_norm_ref_x_changed(self, container, trait, new):
         self._refresh_current_view()
 
     def _name_plot(self, region, series_name):
@@ -1396,7 +1411,7 @@ All rights reserved.
 
 
 if __name__ == "__main__":
-    np.seterr(divide='raise')
+    np.seterr(divide='raise', invalid='raise')
     tree_panel = TreePanel(specs_file=SpecsFile())
     selector_panel = SelectorPanel()
     plot_panel = PlotPanel()
