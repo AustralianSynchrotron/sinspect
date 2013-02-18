@@ -534,10 +534,12 @@ class TreePanel(HasTraits):
 
     def _bt_set_reference_changed(self):
         ''' Sets the current tree node object as the source for normalisation. '''
-        tree_panel.norm_ref = tree_panel.node_selection[0]
-        tree_panel.lb_norm_ref = tree_panel.norm_ref.name
-        # Now refresh the selection panel to force its drop-down selector to appear
-        tree_panel.node_selection[0].selection.refresh_dbl_norm_ref()
+        s = tree_panel.node_selection
+        if len(s) > 0 and isinstance(s[0], SPECSRegion):
+            tree_panel.norm_ref = s[0]
+            tree_panel.lb_norm_ref = tree_panel.norm_ref.name
+            # Now refresh the selection panel to force its drop-down selector to appear
+            s[0].selection.refresh_dbl_norm_ref()
 
     def _extended_channel_ref_changed(self):
         ''' If the normalisation channel drop-down selection is changed, force a refresh
@@ -1410,7 +1412,7 @@ class HelpBox(HasTraits):
 
     traits_view = View(
         UItem('help_text', editor=HTMLEditor(format_text=True)),
-        title = 'Help',
+        title = 'About',
         kind  = 'modal',
         resizable = True,
         height = 0.8, width=0.8,
@@ -1421,7 +1423,8 @@ class HelpBox(HasTraits):
         super(HelpBox, self).__init__(*args, **kws)
         self.help_text = \
     """
-    <h5>Plot region usage</h5>
+    <h3>Usage</h3>
+    <h5>Plot region navigation</h5>
     <em>Left drag</em>: Zoom a selection of the plot <br>
     <em>Right drag</em>: Pan the plot <br>
     <em>Right click</em>: Undo zoom <br>
@@ -1434,9 +1437,9 @@ class HelpBox(HasTraits):
     <em>t</em>, <em>[Space]</em> : Toggle counts <br>
     <em>c</em> : Cycle <br>
     
-    <h5>About the software</h5>
+    <h3>About the software</h3>
     
-    Please send bug reports and suggestions to <br>
+    Please send bug reports and suggestions to
     <a href="mailto:sinspect@synchrotron.org.au">sinspect@synchrotron.org.au</a> <br>
     
     Software authors: <br>
@@ -1475,20 +1478,6 @@ class MenuHandler(Handler):
         ''' Display the About view. '''
         help_box = HelpBox()
         help_box.edit_traits()
-
-    '''
-    # The 'About' view:
-    about = View(
-        UItem('_info_html',
-            editor  = HTMLEditor(format_text=True, parent='myFrame')
-        ),
-        width   = 0.5,
-        height  = 0.75,
-        buttons = [ 'OK' ],
-        resizable = True,
-        kind    = 'modal',
-    )
-    '''
 
 
 class MainApp(HasTraits):
