@@ -293,6 +293,7 @@ class TreePanel(HasTraits):
         When the file dialog box is closed with a file selection, open that file
         '''
         plot_panel.remove_all_plots()
+        self._clear_dbl_nrm_ref_label()
 
         self.name = self.file_path
         try:
@@ -301,6 +302,10 @@ class TreePanel(HasTraits):
         except:
             pass
         GUI.set_busy(False)                     # reset hourglass       @UndefinedVariable
+
+    def _clear_dbl_nrm_ref_label(self):
+        self.lb_norm_ref = self.CONTEXT_MSG
+        self.norm_ref = None
 
     def _x_ranges_match(self, region1, region2, rtol=1e-6):
         ''' Verify that x-ranges of both regions match by checking that the start and end
@@ -430,18 +435,18 @@ class TreePanel(HasTraits):
             if True in mask:
                 normalisation_ok = False
                 normalisation_errors = True
-                err_msg = '# Errors were generated while normalising and have been set to -1'
+                err_msg = 'Errors generated while normalising have been set to -1'
 
         except FloatingPointError:
             normalisation_ok = False
             normalisation_errors = True
-            err_msg = '# Unexpected floating point errors normalising to Extended channel {}'.format(
+            err_msg = 'Unexpected floating point errors normalising to Extended channel {}'.format(
                 normalisation_ref)
         except ValueError:
             normalisation_ok = False
             normalisation_errors = True
             R, s, d = self._get_double_normalisation_channels()
-            err_msg = '# Energy ranges differ in double normalisation reference {}:{}/{}'.format(R.name, s, d)
+            err_msg = 'Energy ranges differ in double normalisation reference {}:{}/{}'.format(R.name, s, d)
 
         # Write output
         try:
@@ -457,7 +462,7 @@ class TreePanel(HasTraits):
             filename = os.path.join(dirname, 'ERRORS_{}.xy'.format(r.name))
         with open(filename, 'w') as f:
             if err_msg != '':
-                print >> f, err_msg
+                print >> f, '# ERRORS:', err_msg
             if self.cb_header:
                 # Output header
                 print >> f, h
@@ -466,7 +471,7 @@ class TreePanel(HasTraits):
             np.savetxt(f, a, fmt='%1.8g', delimiter=delimiter)
 
             print filename, 'written'
-        return err_msg, normalisation_errors        # return err_msg which will contain any error message if one occurred
+        return err_msg, normalisation_errors        # err_msg contains any error message if one occurred
 
     def _file_save(self, path):
         ''' Saves all regions set for export into a directory hierarchy rooted at path '''
@@ -542,10 +547,10 @@ class TreePanel(HasTraits):
             self.node_selection[0].selection._refresh_current_view()
 
     def _bt_clear_reference_changed(self):
-        self.lb_norm_ref = self.CONTEXT_MSG
-        self.norm_ref = None
-        if isinstance(self.node_selection[0], SPECSRegion):
-            self.node_selection[0].selection.refresh_dbl_norm_ref()
+        self._clear_dbl_nrm_ref_label()
+        selected = self.node_selection[0]
+        if isinstance(selected, SPECSRegion):
+            selected.selection.refresh_dbl_norm_ref()
 
     def _region_select(self):
         # Update SelectorPanel
@@ -688,7 +693,7 @@ class TreePanel(HasTraits):
                       on_dclick = _region_dclick,
                     )
         ],
-        editable = False,           # suppress the editor pane as we are using the separate Chaco pane for this
+        editable = False,   # suppress editor pane as we are using the separate Chaco pane for this
         selected = 'node_selection',
         selection_mode = 'extended',
     )
@@ -715,16 +720,8 @@ class TreePanel(HasTraits):
                         UItem('bt_open_file'),
                         VGroup(
                             HGroup(
-                                Item('lb_ref', label='Region', style='readonly'),
-                                spring,
-                                UItem('bt_copy_to_selection', enabled_when='object._reference_set()'),
-                            ),
-                            label = 'Paste selection region',
-                            show_border = True,
-                        ),
-                        VGroup(
-                            HGroup(
-                                Item('extended_channel_ref', label='ref:', enabled_when='object._has_data() and not object._norm_reference_set()')
+                                Item('extended_channel_ref', label='ref:',
+                                     enabled_when='object._has_data() and not object._norm_reference_set()')
                             ),
                             label = 'Normalisation by chosen I0',
                             show_border = True,
@@ -733,9 +730,22 @@ class TreePanel(HasTraits):
                             HGroup(
                                 Item('lb_norm_ref', label='Region', style='readonly'),
                             ),
-                            UItem('bt_set_reference', visible_when='not object._norm_reference_set()', enabled_when='object._has_data()'),
-                            UItem('bt_clear_reference', visible_when='object._norm_reference_set()'),
+                            UItem('bt_set_reference',
+                                  visible_when='not object._norm_reference_set()',
+                                  enabled_when='object._has_data()'),
+                            UItem('bt_clear_reference',
+                                  visible_when='object._norm_reference_set()'),
                             label = 'Double normalisation by chosen spectrum',
+                            show_border = True,
+                        ),
+                        VGroup(
+                            HGroup(
+                                Item('lb_ref', label='Region', style='readonly'),
+                                spring,
+                                UItem('bt_copy_to_selection',
+                                      enabled_when='object._reference_set()'),
+                            ),
+                            label = 'Paste selection region',
                             show_border = True,
                         ),
                         UItem(
@@ -891,7 +901,9 @@ class PlotPanel(HasTraits):
         name = '_'.join([draw_layer, name])
         self.plot_data.set_data(name+'_xs', xs)
         self.plot_data.set_data(name+'_ys', ys)
-        renderer = self.plot.plot((name+'_xs', name+'_ys'), name=name, type='line', **lineplot_args)[0]
+        renderer = self.plot.plot((name+'_xs', name+'_ys'),
+                                   name=name, type='line',
+                                   **lineplot_args)[0]
         renderer.set(draw_layer=draw_layer)
 
         self.plot.request_redraw()
@@ -1106,15 +1118,27 @@ class SelectorPanel(HasTraits):
                 group.label = 'Extended Channels'
                 group1.content.append(group)
 
-                # extended channel double normalisation reference
+                # extended channel double normalisation reference.
+                # This group is only visible when in double normalisation mode and only
+                # for the double normalisation reference region.
                 group = HGroup()
-                group.content = [UItem('dbl_norm_ref_numerator', visible_when='object._is_norm_reference()'),
-                                 UItem('text_divider', style='readonly', visible_when='object._is_norm_reference()'),
-                                 UItem('text_reflabel', style='readonly', visible_when='not object._is_norm_reference()'),
-                                 UItem('dbl_norm_ref')]
+                group.content = [UItem('dbl_norm_ref_numerator'),
+                                 UItem('text_divider', style='readonly'),
+                                 UItem('dbl_norm_ref'),
+                                ]
                 group.show_border = True
                 group.label = 'Dbl nrm ref'
-                group.visible_when = 'object._norm_reference_set()'
+                group.visible_when = 'object._norm_reference_set() and object._is_norm_reference()'
+                group1.content.append(group)
+
+                # This group is only visible when in double normalisation mode and only
+                # for any region other than the double normalisation reference, i.e. it is
+                # mutually exclusive with the above group.
+                group = HGroup()
+                group.content = [UItem('dbl_norm_ref', width=-70)]
+                group.show_border = True
+                group.label = 'Dbl nrm ref'
+                group.visible_when = 'object._norm_reference_set() and not object._is_norm_reference()'
                 group1.content.append(group)
 
             group1.label = self.region.name
@@ -1437,7 +1461,6 @@ All rights reserved.
 
 
 if __name__ == "__main__":
-#    np.seterr(divide='raise', invalid='raise')
     np.seterr(divide='ignore', invalid='ignore')
     tree_panel = TreePanel(specs_file=SpecsFile())
     selector_panel = SelectorPanel()
