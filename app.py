@@ -3,10 +3,10 @@ import os
 #ETSConfig.toolkit = 'qt4'
 import numpy as np
 from enable.api import ComponentEditor
-from traits.api import Str, Bool, Enum, List, Dict, Any, \
+from traits.api import Str, Bool, Enum, List, Dict, Any, HTML, \
     HasTraits, Instance, Button, on_trait_change
-from traitsui.api import View, Group, HGroup, VGroup, HSplit, \
-    Item, UItem, TreeEditor, TreeNode, Menu, Action, Handler, spring
+from traitsui.api import View, Group, HGroup, VGroup, HSplit, HTMLEditor, \
+    Item, UItem, TreeEditor, TreeNode, Menu, MenuBar, Action, Handler, spring
 from traitsui.key_bindings import KeyBinding, KeyBindings
 from pyface.api import ImageResource, DirectoryDialog, OK, GUI, error
 from fixes import fix_background_color
@@ -1390,6 +1390,107 @@ class SelectorPanel(HasTraits):
             self.cycle_extended_channels_state = 'all_on'
 
 
+# The application menu bar
+menubar = MenuBar(
+    Menu( 
+        Action( name   = 'Quit', 
+                action = 'quit' ),
+        name = 'File'
+    ),
+    Menu( 
+        Action( name   = 'About...',
+                action = 'show_about' ),
+        name = 'Help'
+    )
+)
+
+
+class HelpBox(HasTraits):
+    help_text = HTML
+
+    traits_view = View(
+        UItem('help_text', editor=HTMLEditor(format_text=True)),
+        title = 'Help',
+        kind  = 'modal',
+        resizable = True,
+        height = 0.8, width=0.8,
+        buttons = ['OK'],
+    )
+
+    def __init__(self, *args, **kws):
+        super(HelpBox, self).__init__(*args, **kws)
+        self.help_text = \
+    """
+    <h5>Plot region usage</h5>
+    <em>Left drag</em>: Zoom a selection of the plot <br>
+    <em>Right drag</em>: Pan the plot <br>
+    <em>Right click</em>: Undo zoom <br>
+    <em>[Esc]</em>: Reset zoom/pan <br>
+    <em>Mousewheel</em>: Zoom in/out <br>
+
+    <h5>Keyboard shortcuts for tree selections</h5>
+    <em>+</em>, <em>=</em> : Select <br>
+    <em>-</em> : Deselect <br>
+    <em>t</em>, <em>[Space]</em> : Toggle counts <br>
+    <em>c</em> : Cycle <br>
+    
+    <h5>About the software</h5>
+    
+    Please send bug reports and suggestions to <br>
+    <a href="mailto:sinspect@synchrotron.org.au">sinspect@synchrotron.org.au</a> <br>
+    
+    Software authors: <br>
+    Gary Ruben, Victorian eResearch Strategic Initiative (VeRSI), <a href="mailto:gruben@versi.edu.au">gruben@versi.edu.au</a> <br>
+    Kane O'Donnell, Australian Synchrotron <br>
+    <a href="http://www.versi.edu.au">http://www.versi.edu.au</a> <br>
+    
+    Software home: <br>
+    <a href="http://www.synchrotron.org.au/sinspect">http://www.synchrotron.org.au/sinspect</a> <br>
+    Software source: <br>
+    <a href="http://github.com/AustralianSynchrotron/sinspect">http://github.com/AustralianSynchrotron/sinspect</a> <br>
+    
+    Recognition of NeCTAR funding: <br>
+    The Australian Synchrotron is proud to be in partnership with the National eResearch
+    Collaboration Tools and Resources (NeCTAR) project to develop eResearch Tools for the
+    synchrotron research community. This will enable our scientific users to have instant
+    access to the results of data during the course of their experiment which will
+    facilitate better decision making and also provide the opportunity for ongoing data
+    analysis via remote access.
+    
+    Copyright (c) 2013, Australian Synchrotron Company Ltd <br>
+    All rights reserved.
+    """
+
+
+class MenuHandler(Handler):
+    ''' See https://svn.enthought.com/enthought/browser/trunk/src/lib/enthought/traits/ui/
+                    demos/Traits%20UI%20Demo/Advanced/Menu_and_toolbar_demo.py?rev=10792
+    '''
+
+    def quit(self, info):
+        ''' Quit the application. '''
+        info.ui.dispose()
+
+    def show_about(self, info):
+        ''' Display the About view. '''
+        help_box = HelpBox()
+        help_box.edit_traits()
+
+    '''
+    # The 'About' view:
+    about = View(
+        UItem('_info_html',
+            editor  = HTMLEditor(format_text=True, parent='myFrame')
+        ),
+        width   = 0.5,
+        height  = 0.75,
+        buttons = [ 'OK' ],
+        resizable = True,
+        kind    = 'modal',
+    )
+    '''
+
+
 class MainApp(HasTraits):
     # Left Panel
     tree_panel = Instance(TreePanel)
@@ -1416,48 +1517,10 @@ class MainApp(HasTraits):
                     dock = 'horizontal',
                     drop_class = HasTraits,
                     resizable = True,
+
+                    menubar = menubar,
+                    handler = MenuHandler,
                     )
-
-
-_info_html = \
-"""
-<h5>Plot region usage</h5>
-Left drag = Zoom a selection of the plot <br>
-Right drag = Pan the plot <br>
-Right click = Undo zoom <br>
-Esc = Reset zoom/pan <br>
-Mousewheel = Zoom in/out <br>
-
-<h5>Keyboard shortcuts for tree selections</h5>
-+,=      Select
--        Deselect
-Space,t  Toggle counts
-c        Cycle
-
-<h5>About the software</h5>
-
-Please send bug reports and suggestions to <br>
-sinspect@synchrotron.org.au <br>
-
-Software authors: <br>
-Gary Ruben, Victorian eResearch Strategic Initiative (VeRSI), gruben@versi.edu.au <br>
-Kane O'Donnell, Australian Synchrotron <br>
-http://www.versi.edu.au <br>
-
-Software home: <br>
-http://www.synchrotron.org.au/sinspect <br>
-Software source: <br>
-http://github.com/AustralianSynchrotron/sinspect <br>
-
-Recognition of NeCTAR funding: <br>
-The Australian Synchrotron is proud to be in partnership with the National eResearch Collaboration Tools and
-Resources (NeCTAR) project to develop eResearch Tools for the synchrotron research community. This will enable our
-scientific users to have instant access to the results of data during the course of their experiment which will
-facilitate better decision making and also provide the opportunity for ongoing data analysis via remote access.
-
-Copyright (c) 2013, Australian Synchrotron Company Ltd <br>
-All rights reserved.
-"""
 
 
 if __name__ == "__main__":
