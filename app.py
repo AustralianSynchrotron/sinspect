@@ -1,3 +1,9 @@
+'''
+SinSPECt main application
+SPECS files are xml files containing a mixture of experimental data and metadata.
+This program implements a GUI for exploring and processing the data in a SPECS file.
+'''
+
 import os
 #from traits.etsconfig.api import ETSConfig
 #ETSConfig.toolkit = 'qt4'
@@ -17,6 +23,14 @@ from chaco.tools.tool_states import PanState
 from ui_helpers import get_file_from_dialog
 import specs
 import wx
+
+__author__ = "Gary Ruben"
+__copyright__ = "Copyright (c) 2013, Synchrotron Light Source Australia Pty Ltd"
+__credits__ = ["Kane O'Donnell"]    # Thanks to Kane for releasing the specs module under a Modified BSD license
+__license__ = "Modified BSD"
+__version__ = "x.x"
+__maintainer__ = "Gary Ruben"
+__email__ = "gruben@versi.edu.au"
 
 
 # Linux/Ubuntu themes cause the background of windows to be ugly and dark
