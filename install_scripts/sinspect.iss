@@ -35,13 +35,13 @@ Name: "quicklaunchicon"; Description: "{cm:CreateQuickLaunchIcon}"; GroupDescrip
 
 [Files]
 Source: "C:\Users\gary\VeRSI\NeCTAR_AS_SXR_tool\SinSPECt\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "C:\Users\gary\VeRSI\NeCTAR_AS_SXR_tool\SinSPECt\app.py"; DestDir: "{app}"; Flags: ignoreversion
-Source: "C:\Users\gary\VeRSI\NeCTAR_AS_SXR_tool\SinSPECt\fixes.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "C:\Users\gary\VeRSI\NeCTAR_AS_SXR_tool\SinSPECt\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "C:\Users\gary\VeRSI\NeCTAR_AS_SXR_tool\SinSPECt\README.rst"; DestDir: "{app}"; Flags: ignoreversion
+Source: "C:\Users\gary\VeRSI\NeCTAR_AS_SXR_tool\SinSPECt\app.py"; DestDir: "{app}"; Flags: ignoreversion
+Source: "C:\Users\gary\VeRSI\NeCTAR_AS_SXR_tool\SinSPECt\ui_helpers.py"; DestDir: "{app}"; Flags: ignoreversion
+Source: "C:\Users\gary\VeRSI\NeCTAR_AS_SXR_tool\SinSPECt\fixes.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "C:\Users\gary\VeRSI\NeCTAR_AS_SXR_tool\SinSPECt\specs.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "C:\Users\gary\VeRSI\NeCTAR_AS_SXR_tool\SinSPECt\start_sinspect.sh"; DestDir: "{app}"; Flags: ignoreversion
-Source: "C:\Users\gary\VeRSI\NeCTAR_AS_SXR_tool\SinSPECt\ui_helpers.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "C:\Users\gary\VeRSI\NeCTAR_AS_SXR_tool\SinSPECt\resources\app_icon.ico"; DestDir: "{app}\resources"; Flags: ignoreversion
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 

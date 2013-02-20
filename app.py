@@ -28,7 +28,7 @@ __author__ = "Gary Ruben"
 __copyright__ = "Copyright (c) 2013, Synchrotron Light Source Australia Pty Ltd"
 __credits__ = ["Kane O'Donnell"]    # Thanks to Kane for releasing the specs module under a Modified BSD license
 __license__ = "Modified BSD"
-__version__ = "x.x"
+__version__ = "0.2rc2"
 __maintainer__ = "Gary Ruben"
 __email__ = "gruben@versi.edu.au"
 
@@ -334,6 +334,9 @@ class TreePanel(HasTraits):
         return False
 
     def normalise(self, region, ys, series_name):
+        ''' A wrapper method for single and souble normalisation that delegates to the
+        normalisation method desired according to the GUI state.
+        '''
         mode = self.get_normalisation_mode()
         if mode == 'self':
             if (get_name_body(series_name)!='extended_channels') or \
@@ -349,6 +352,9 @@ class TreePanel(HasTraits):
         return ys
 
     def _get_counts_label_for_region(self, r):
+        ''' Builds a string of the form '1+2+4' where the summands correspond to the
+        selected channel_counts trait states
+        '''
         cc_dict = r.selection.get_channel_counts_states()
         # make a string indicating the channel_counts columns summed to
         # obtain the counts column  
@@ -476,6 +482,7 @@ class TreePanel(HasTraits):
             filename = os.path.join(dirname, 'ERRORS_{}.xy'.format(r.name))
         with open(filename, 'w') as f:
             if err_msg != '':
+                # Additional header line indicating there were errors
                 print >> f, '# ERRORS:', err_msg
             if self.cb_header:
                 # Output header
@@ -506,7 +513,7 @@ class TreePanel(HasTraits):
             error(None, h)          # throw up an error message dialog
 
     def _bt_export_file_changed(self):
-        ''' Event handler
+        ''' Button event handler
         Called when the user clicks the Export... button
         '''
         myFrame = wx.GetApp().GetTopWindow()
@@ -539,6 +546,9 @@ class TreePanel(HasTraits):
         pass
 
     def _bt_copy_to_selection_changed(self):
+        ''' Paste button event handler. Paste the state of the selection panel
+        associated with the referenced region into the current tree selection
+        '''
         if self.ref is not None:
             trait_dict = self.ref.selection.get_trait_states()
             for r in tree_panel.node_selection:
@@ -558,17 +568,20 @@ class TreePanel(HasTraits):
     def _extended_channel_ref_changed(self):
         ''' If the normalisation channel drop-down selection is changed, force a refresh
         of the plots in the current selection to ensure that they all have the latest
-        normalisation applied '''
+        normalisation applied
+        '''
         if isinstance(self.node_selection[0], SPECSRegion):
             self.node_selection[0].selection._refresh_current_view()
 
     def _bt_clear_reference_changed(self):
+        ''' Button event handler clears the double normalisation reference '''
         self._clear_dbl_nrm_ref_label()
         selected = self.node_selection[0]
         if isinstance(selected, SPECSRegion):
             selected.selection.refresh_dbl_norm_ref()
 
     def _region_select(self):
+        ''' Tree selection event handler for region nodes '''
         # Update SelectorPanel
         main_app.selector_panel = self.selection
 
@@ -580,8 +593,7 @@ class TreePanel(HasTraits):
         plot_panel.reset_view()
 
     def _group_dclick(self):
-        '''
-        Double-clicking a node cycles through selection states of subordinate regions
+        ''' Double-clicking a node cycles through selection states of subordinate regions
         all-on -> last-selection -> all-off -> all-on -> ...
         '''
         try:
@@ -600,8 +612,7 @@ class TreePanel(HasTraits):
         GUI.set_busy(False)                     # reset hourglass       @UndefinedVariable
 
     def _region_dclick(self):
-        '''
-        Double-clicking a node cycles through selection states of subordinate channels
+        ''' Double-clicking a node cycles through selection states of subordinate channels
         all-on -> last-selection -> all-off -> all-on -> ...
         '''
         for s in tree_panel.node_selection:
@@ -784,6 +795,7 @@ class TreePanel(HasTraits):
 
 
 class PanToolWithHistory(PanTool):
+    ''' Chaco pan tool '''
     def __init__(self, *args, **kwargs):
         self.history_tool = kwargs.get('history_tool', None)
         if 'history_tool' in kwargs:
@@ -813,6 +825,7 @@ class PanToolWithHistory(PanTool):
 
 
 class ClickUndoZoomTool(ZoomTool):
+    ''' Chaco zoom tool '''
     def __init__(self, component=None, undo_button='right', *args, **kwargs):
         super(ClickUndoZoomTool, self).__init__(component, *args, **kwargs)
         self.undo_button = undo_button
@@ -1161,7 +1174,7 @@ class SelectorPanel(HasTraits):
             group1.show_border = True
             # Ideally, the next commented-out line would work, but this thread points to a
             # problem: http://thread.gmane.org/gmane.comp.python.enthought.devel/22603
-            # group1.layout = 'flow'
+            # # group1.layout = 'flow'
             # Setting group.show_border = False does partially work, but leaves buttons
             # visible that shouldn't be.
             items.append(group1)
@@ -1299,7 +1312,7 @@ class SelectorPanel(HasTraits):
         self.set(**params_to_set_traits)
 
     def plot_checkbox_states(self):
-        ''' Add plots to the default (foreground) layer reflecting the checkbox states
+        ''' Add plots to the default (foreground) layer reflecting the checkbox states.
         '''
         trait_dict = self.get_trait_states()
         for trait, val in trait_dict.iteritems():
@@ -1337,7 +1350,7 @@ class SelectorPanel(HasTraits):
         return trait_dict
 
     def region_cycle(self, all_off=False, counts_only=False):
-        ''' Cycle the state of the selected channels
+        ''' Cycle the state of the selected channels.
         '''
         if all_off:
             self.trait_set(**{i: False for i in self._instance_traits()
@@ -1374,7 +1387,7 @@ class SelectorPanel(HasTraits):
             self.cycle_state = 'counts_on'
 
     def _bt_cycle_channel_counts_changed(self):
-        ''' Toggle the state of the counts channels
+        ''' Toggle the state of the counts channels.
         '''
         channel_counts_states = self.get_channel_counts_states().values()
         if (False in channel_counts_states) and (True in channel_counts_states):
@@ -1390,7 +1403,7 @@ class SelectorPanel(HasTraits):
             self.cycle_channel_counts_state = 'all_on'
 
     def _bt_cycle_extended_channels_changed(self):
-        ''' Toggle the state of the counts channels
+        ''' Toggle the state of the counts channels.
         '''
         extended_channels_states = self.get_extended_channels_states().values()
         if (False in extended_channels_states) and (True in extended_channels_states):
@@ -1438,6 +1451,7 @@ class HelpBox(HasTraits):
         self.help_text = \
     """
     <h3>Usage</h3>
+
     <h5>Plot region navigation</h5>
     <em>Left drag</em>: Zoom a selection of the plot <br>
     <em>Right drag</em>: Pan the plot <br>
@@ -1452,14 +1466,15 @@ class HelpBox(HasTraits):
     <em>c</em> : Cycle <br>
     
     <h3>About the software</h3>
+    SinSPECt version {__version__}
     
     Please send bug reports and suggestions to
     <a href="mailto:sinspect@synchrotron.org.au">sinspect@synchrotron.org.au</a> <br>
     
     Software authors: <br>
     Gary Ruben, Victorian eResearch Strategic Initiative (VeRSI), <a href="mailto:gruben@versi.edu.au">gruben@versi.edu.au</a> <br>
-    Kane O'Donnell, Australian Synchrotron <br>
     <a href="http://www.versi.edu.au">http://www.versi.edu.au</a> <br>
+    Kane O'Donnell, Australian Synchrotron <br>
     
     Software home: <br>
     <a href="http://www.synchrotron.org.au/sinspect">http://www.synchrotron.org.au/sinspect</a> <br>
@@ -1474,9 +1489,9 @@ class HelpBox(HasTraits):
     facilitate better decision making and also provide the opportunity for ongoing data
     analysis via remote access.
     
-    Copyright (c) 2013, Australian Synchrotron Company Ltd <br>
+    {__copyright__} <br>
     All rights reserved.
-    """
+    """.format(__copyright__=__copyright__, __version__=__version__)
 
 
 class MenuHandler(Handler):
@@ -1495,35 +1510,34 @@ class MenuHandler(Handler):
 
 
 class MainApp(HasTraits):
-    # Left Panel
     tree_panel = Instance(TreePanel)
     selector_panel = Instance(SelectorPanel)
-    # Right Panel
     plot_panel = Instance(PlotPanel)
 
     # The main view
-    traits_view =   View(
-                        HSplit(
-                            Group(
-                                UItem('tree_panel', style='custom', width=APP_WIDTH*0.2),
-                            ),
-                            Group(
-                                VGroup(
-                                    UItem('selector_panel', style='custom', width=APP_WIDTH*.8),
-                                    UItem('plot_panel', style='custom'),
-                                ),
-                            ),
-                        ),
-                    title = title,
-                    icon = ImageResource(app_icon),
-                    id = 'app.main_view',
-                    dock = 'horizontal',
-                    drop_class = HasTraits,
-                    resizable = True,
+    traits_view = \
+        View(
+            HSplit(
+                Group(
+                    UItem('tree_panel', style='custom', width=APP_WIDTH*0.2),
+                ),
+                Group(
+                    VGroup(
+                        UItem('selector_panel', style='custom', width=APP_WIDTH*.8),
+                        UItem('plot_panel', style='custom'),
+                    ),
+                ),
+            ),
+        title = title,
+        icon = ImageResource(app_icon),
+        id = 'app.main_view',
+        dock = 'horizontal',
+        drop_class = HasTraits,
+        resizable = True,
 
-                    menubar = menubar,
-                    handler = MenuHandler,
-                    )
+        menubar = menubar,
+        handler = MenuHandler,
+        )
 
 
 if __name__ == "__main__":
