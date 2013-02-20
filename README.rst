@@ -31,7 +31,7 @@ To run, just call python on app.py
 
 Version History
 ---------------
-0.2 This version
-    Validation testing version in preparation for public release
-0.2rc1 Tagged version for evaluation by local users
-0.1 Initial tagged release for evaluation by beamline scientists
+0.2rc2  This version
+        Tagged version for evaluation by local users
+0.2rc1  Tagged version for evaluation by local users
+0.1     Initial tagged release for evaluation by beamline scientists
