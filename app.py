@@ -370,16 +370,17 @@ class TreePanel(HasTraits):
         d = R.selection.dbl_norm_ref
         return R, s, d
 
-    def _export_region(self, r, dirname, normalisation_errors):
+    def _export_region(self, r, dirname):
         ''' Exports region r into the directory dirname. The directory is created as
-        needed. normalisation_errors is a flag that keeps track of whether any such
-        errors occurred.
+        needed. Returns a flag normalisation_errors if errors occurred. If True, the error
+        message will be contained in the associated err_msg.
         '''
         # variable a holds the columnar count data. Start with the x-axis
         # then append counts, channel_counts and extended_channels as
         # appropriate.
 
         err_msg = ''
+        normalisation_errors = False
         h = ''
         delimiter = {'space':' ', 'comma':',', 'tab':'\t'}[self.delimiter]
         a = [r.get_x_axis()]            # x-axis data
@@ -492,12 +493,12 @@ class TreePanel(HasTraits):
             np.savetxt(f, a, fmt='%1.8g', delimiter=delimiter)
 
             print filename, 'written'
-        return err_msg, normalisation_errors        # err_msg contains any error message if one occurred
+        return normalisation_errors, err_msg    # err_msg contains any error message if one occurred
 
     def _file_save(self, path):
         ''' Saves all regions set for export into a directory hierarchy rooted at path '''
         # Export all regions in all groups
-        normalisation_errors = False            # Reset error flag
+        there_were_errors = False            # Reset error flag
         for g in self.specs_file.specs_groups:
             for r in g.specs_regions:
                 # make file region.name+'.xy' in directory g.name
@@ -507,10 +508,12 @@ class TreePanel(HasTraits):
 
                 if r.selection.counts:
                     dir_path = os.path.join(path, g.name)
-                    h, normalisation_errors = \
-                        self._export_region(r, dir_path, normalisation_errors)
-        if normalisation_errors:
-            error(None, h)          # throw up an error message dialog
+                    region_errors, err_msg = self._export_region(r, dir_path)
+                    if region_errors:
+                        there_were_errors = True
+                        error_dialog_message = err_msg
+        if there_were_errors:
+            error(None, error_dialog_message)   # throw up an error message dialog
 
     def _bt_export_file_changed(self):
         ''' Button event handler
