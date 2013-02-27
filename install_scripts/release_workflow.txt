@@ -1,0 +1,22 @@
+-   Specify a new version tag
+-   Update README.rst Version History section to contain tag reference and list of important changes
+-   Verify that all Copyright messages in the LICENSE file and .py files have the current year
+-   Update the documentation version by updating the 'version' and 'release' strings in docs/conf.py
+    Update __version__ string in app.py
+    Final run of unit tests/nose tests
+    Package versions on Windows and Mac:
+        Windows (We use innotools for packaging)
+            Update install_scripts/sinspect.iss:
+                Add any new source files to the [Files] section
+                Update AppVersion in the [Setup] section
+            Compile the installer
+        Mac OSX
+            Update version in Platypus packager [Platypus | http://sveinbjorn.org/platypus]
+            Wrap SinSPECt in an application bundle using Platypus
+            Build an installer using mac Installer/PackageMaker:
+    Commit these changes:
+        $ git tag -a message
+    Verify that code is tagged at github project page
+-   Announce new version availability
+    Change version on synchrotron program landing page
+    Upload the new installer and zip file versions to the synchrotron website for download
