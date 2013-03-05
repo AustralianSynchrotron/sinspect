@@ -61,7 +61,7 @@
 
 from __future__ import division
 import xml.etree.cElementTree as ET
-from numpy import array, linspace, zeros, ceil, amax, amin, argmax, argmin, abs
+from numpy import array, linspace, arange, zeros, ceil, amax, amin, argmax, argmin, abs
 from numpy import polyfit, polyval, seterr, trunc, mean
 from numpy.linalg import norm
 from scipy.interpolate import interp1d
@@ -208,6 +208,9 @@ class SPECSRegion(object):
             self.values_per_curve - 1) * self.scan_delta
         self.excitation_axis = linspace(
             self.excitation_energy, exc_upper, self.values_per_curve)
+
+        # Time axis
+        self.time_axis = arange(self.values_per_curve) * self.dwell_time
 
         # MCD head and tail are the extra elements added to the beginning and
         # end of the scan.

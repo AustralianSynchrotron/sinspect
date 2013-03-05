@@ -40,6 +40,25 @@ APP_WIDTH = 800
 title = "SinSPECt"
 app_icon = os.path.join('resources','app_icon.ico')
 
+scan_mode_lookup = lambda key: {\
+    'FixedAnalyzerTransmission':{ 'axis' :'binding_axis',
+                                  'label':'Binding energy [eV]',
+                                  'orientation':'reversed',
+                                },
+    'ConstantFinalState'       :{ 'axis' :'excitation_axis',
+                                  'label':'Excitation energy [eV]',
+                                  'orientation':'normal',
+                                },
+    'FixedEnergies'            :{ 'axis' :'time_axis',
+                                  'label':'Time (s)',
+                                  'orientation':'normal',
+                                },
+    }.get(key,                  { 'axis' :'kinetic_axis',
+                                  'label':'Kinetic energy [eV]',
+                                  'orientation':'normal',
+                                },
+    ) # last one is the default case
+
 # SPECSRegion, SPECSGroup and SpecsFile are Traited versions of SPECS xml file classes
 # that represent nodes in the TreeEditor widget
 
@@ -94,15 +113,11 @@ class SPECSRegion(HasTraits):
     def get_x_axis(self):
         ''' Return x-axis data based on the scan_mode metadata '''
         r = self.region
-        if r.scan_mode == 'FixedAnalyzerTransmission':
-            xs = r.binding_axis
-        elif r.scan_mode == 'ConstantFinalState':
-            xs = r.excitation_axis
-        else:
-            xs = r.kinetic_axis
+        xs = getattr(r, scan_mode_lookup(r.scan_mode)['axis'])
         return xs
 
     def update_label(self):
+        ''' Update label in the tree editor to indicate the export state '''
         self.label_name = self._get_label()
 
     def _get_label(self):
@@ -272,6 +287,7 @@ class SpecsFile(HasTraits):
 
 
 class TreePanel(HasTraits):
+    ''' The tree widget '''
     CONTEXT_MSG = '(Set from right-click menu)'
     specs_file = Instance(SpecsFile)
     file_path = Str(None)
@@ -285,7 +301,7 @@ class TreePanel(HasTraits):
     bt_copy_to_selection = Button('Paste')
     bt_clear_reference = Button('Clear')
     bt_set_reference = Button('Set region')
-    lb_ref = Str(CONTEXT_MSG)
+    lb_copy_ref = Str(CONTEXT_MSG)
     lb_norm_ref = Str(CONTEXT_MSG)
     extended_channel_ref = Enum('None', 1, 2, 3, 4, 5, 6, 7, 8, 9)('None')
     ref = Instance(SPECSRegion)
@@ -318,6 +334,9 @@ class TreePanel(HasTraits):
         GUI.set_busy(False)                     # reset hourglass       @UndefinedVariable
 
     def _clear_dbl_nrm_ref_label(self):
+        ''' The double-normalisation reference starts off set to None, indicating that
+        double normalisation should bot be done. Call this to reset to that initial state.
+        '''
         self.lb_norm_ref = self.CONTEXT_MSG
         self.norm_ref = None
 
@@ -419,9 +438,7 @@ class TreePanel(HasTraits):
 
             # Second header line
             h += '#'
-            h += {'FixedAnalyzerTransmission':'"Binding Axis"',
-                  'ConstantFinalState'       :'"Excitation Axis"',
-                 }.get(r.region.scan_mode,    '"Kinetic Axis"')
+            h += '"{}"'.format(scan_mode_lookup(r.region.scan_mode)['label'])
             h += '{}"Counts {}"'.format(delimiter, counts_label)
 
             # channel_counts_n data
@@ -526,12 +543,15 @@ class TreePanel(HasTraits):
             self._file_save(dlg.path)
 
     def _has_data(self):
+        ''' Returns true iff a file has been loaded. '''
         return self.file_path is not None
 
     def _reference_set(self):
-        return self.lb_ref != self.CONTEXT_MSG
+        ''' Returns true iff the copy/paste region has been set. '''
+        return self.lb_copy_ref != self.CONTEXT_MSG
 
     def _norm_reference_set(self):
+        ''' Returns true iff the double normalisation reference region has been set. '''
         return self.lb_norm_ref != self.CONTEXT_MSG
 
     def get_normalisation_mode(self):
@@ -543,10 +563,6 @@ class TreePanel(HasTraits):
             return 'none'
         else:
             return 'self'
-
-    def _group_select(self):
-        # print 'gs', self.name
-        pass
 
     def _bt_copy_to_selection_changed(self):
         ''' Paste button event handler. Paste the state of the selection panel
@@ -588,10 +604,14 @@ class TreePanel(HasTraits):
         # Update SelectorPanel
         main_app.selector_panel = self.selection
 
+        lookup = scan_mode_lookup(self.region.scan_mode)
         # Remove current plots from the plot window foreground layer
         plot_panel.remove_all_plots(draw_layer='foreground')
         # Add any checked counts and channels to the plot window foreground layer
+        plot_panel.set_x_orientation(lookup['orientation']) # set increasing or decreasing
         self.selection.plot_checkbox_states()
+        # update the x-axis label
+        plot_panel.set_x_label(lookup['label'])
         # Reset the view limits
         plot_panel.reset_view()
 
@@ -623,6 +643,7 @@ class TreePanel(HasTraits):
         tree_panel._cycle_region_key()
 
     def _cycle_region_key(self, info=None):
+        ''' Cycle the region selection states of a region or all regions in a group '''
         try:
             GUI.set_busy()                      # set hourglass         @UndefinedVariable
             for n in self.node_selection:
@@ -636,6 +657,9 @@ class TreePanel(HasTraits):
         GUI.set_busy(False)                     # reset hourglass       @UndefinedVariable
 
     def _change_selection_state(self, selection, set_state='toggle'):
+        ''' Sets or toggles the region selection states of a region or all regions in a
+        group.
+        '''
         try:
             GUI.set_busy()                      # set hourglass         @UndefinedVariable
             for n in selection:
@@ -651,15 +675,15 @@ class TreePanel(HasTraits):
         GUI.set_busy(False)                     # reset hourglass       @UndefinedVariable
 
     def _toggle_key(self, info):
-        # toggle counts of selection
+        ''' toggle counts of selection '''
         self._change_selection_state(self.node_selection)
 
     def _select_key(self, info):
-        # set counts of selection True
+        ''' set counts of selection True '''
         self._change_selection_state(self.node_selection, set_state=True)
 
     def _deselect_key(self, info):
-        # set counts of selection False
+        ''' set counts of selection False '''
         self._change_selection_state(self.node_selection, set_state=False)
 
     class TreeHandler(Handler):
@@ -669,7 +693,7 @@ class TreePanel(HasTraits):
             selected tree items.
             '''
             tree_panel.ref = obj
-            tree_panel.lb_ref = obj.name
+            tree_panel.lb_copy_ref = obj.name
 
         def _menu_set_as_norm_reference(self, editor, obj):
             ''' Sets the current tree node object as the source for normalisation. '''
@@ -704,7 +728,6 @@ class TreePanel(HasTraits):
                       add       = [SPECSRegion],
                       menu      = Menu(),
                       rename_me = False,
-                      on_select = _group_select,
                       on_dclick = _group_dclick,
                     ),
 
@@ -728,6 +751,7 @@ class TreePanel(HasTraits):
         selection_mode = 'extended',
     )
 
+    # shortcut keys
     key_bindings = KeyBindings(
         KeyBinding( binding1    = 'Space',
                     binding2    = 't',
@@ -770,7 +794,7 @@ class TreePanel(HasTraits):
                         ),
                         VGroup(
                             HGroup(
-                                Item('lb_ref', label='Region', style='readonly'),
+                                Item('lb_copy_ref', label='Region', style='readonly'),
                                 spring,
                                 UItem('bt_copy_to_selection',
                                       enabled_when='object._reference_set()'),
@@ -836,21 +860,21 @@ class ClickUndoZoomTool(ZoomTool):
         self.minimum_undo_delta = 3
 
     def normal_left_down(self, event):
-        """ Handles the left mouse button being pressed while the tool is
+        ''' Handles the left mouse button being pressed while the tool is
         in the 'normal' state.
 
         If the tool is enabled or always on, it starts selecting.
-        """
+        '''
         if self.undo_button == 'left':
             self._undo_screen_start = (event.x, event.y)
         super(ClickUndoZoomTool, self).normal_left_down(event)
 
     def normal_right_down(self, event):
-        """ Handles the right mouse button being pressed while the tool is
+        ''' Handles the right mouse button being pressed while the tool is
         in the 'normal' state.
 
         If the tool is enabled or always on, it starts selecting.
-        """
+        '''
         if self.undo_button == 'right':
             self._undo_screen_start = (event.x, event.y)
         super(ClickUndoZoomTool, self).normal_right_down(event)
@@ -930,6 +954,11 @@ class PlotPanel(HasTraits):
         self.value_mapper, self.index_mapper = self._setup_plot_tools(plot)
 
     def add_plot(self, name, xs, ys, draw_layer='foreground', **lineplot_args):
+        ''' Call to add a line plot with data in the xs and ys 1D arrays.
+        The plot is referred to by the name string, which is uniquely built from the
+        region and channel id.
+        '''
+        assert(draw_layer in self.LAYERS)
         name = '_'.join([draw_layer, name])
         self.plot_data.set_data(name+'_xs', xs)
         self.plot_data.set_data(name+'_ys', ys)
@@ -942,6 +971,9 @@ class PlotPanel(HasTraits):
         return self.plot
 
     def remove_plot(self, name, draw_layer='foreground'):
+        ''' Remove any plot referred to by the name id string (except tool_plot).
+        '''
+        assert(draw_layer in self.LAYERS)
         if name == 'tool_plot':
             # Never remove this one since the chaco tools are attached to it 
             return
@@ -959,6 +991,11 @@ class PlotPanel(HasTraits):
         self.plot.request_redraw()
 
     def update_plot_data(self, name, data, x_or_y='y', draw_layer='foreground', **lineplot_args):
+        ''' Call this to update the x or y data for an existing line plot. Specify whether
+        x or y data with x_or_y. The new data should be in data and the number of elements
+        should match those of the corresponding data (e.g. the x-data if x_or_y=='y')
+        '''
+        assert(draw_layer in self.LAYERS)
         name = '_'.join([draw_layer, name])
         xy_suffix = {'x':'_xs', 'y':'_ys'}[x_or_y]
         self.plot_data.set_data(name+xy_suffix, data)
@@ -969,23 +1006,46 @@ class PlotPanel(HasTraits):
         which is never removed). Otherwise, removes all plots from the specified
         draw_layer which is assumed to one of the values in the LAYERS list.
         '''
+        assert(draw_layer in (self.LAYERS + [None]))
         for p in plot_panel.plot.plots.keys():
             if (draw_layer is None) or (p.split('_')[0] == draw_layer):
                 plot_panel.remove_plot(p)
 
     def get_plot(self, name, draw_layer=None):
-        ''' Get a plot reference from the name '''
+        ''' Get a plot reference from the name by prepending the draw_layer string if
+        one is specified.
+        '''
+        assert(draw_layer in (self.LAYERS + [None]))
         if draw_layer is not None:
             name = '_'.join([draw_layer, name])
         return self.plot.plots[name][0]
 
     def set_plot_attributes(self, name, draw_layer='foreground', **attributes):
+        ''' Set the attributes specified in the attributes dictionary on the line plot
+        referred to by the name string.
+        '''
+        assert(draw_layer in self.LAYERS)
         name = '_'.join([draw_layer, name])
         try:
             for key, value in attributes.iteritems():
                 setattr(self.plot.plots[name][0], key, value)
         except KeyError:
             pass
+
+    def set_x_label(self, label):
+        ''' Set the axis label to the label string '''
+        self.plot.x_axis.title = label
+
+    def set_x_orientation(self, orientation):
+        ''' Sets the x-axis orientation to increasing or decreasing. This should be
+        called before any plots are added as any existing visible plots won't be
+        automatically updated.
+        '''
+        assert(orientation in ['normal', 'reversed'])
+        if orientation == 'normal':
+            self.plot.default_origin = 'bottom left'
+        else:
+            self.plot.default_origin = 'bottom right'
 
     def _setup_plot_tools(self, plot):
         ''' Sets up the background, and several tools on a plot '''
@@ -1007,6 +1067,7 @@ class PlotPanel(HasTraits):
         return plot.value_mapper, plot.index_mapper
 
     def reset_view(self):
+        ''' Reset the view limits. '''
         self.plot.index_range.reset()
         self.plot.value_range.reset()
         self.zoom_tool.clear_undo_history()
@@ -1101,11 +1162,13 @@ class SelectorPanel(HasTraits):
         self.cycle_state = 'counts_on'
 
     def _norm_reference_set(self):
+        ''' Returns True iff a double normalisation reference region is currently set.
+        '''
         return tree_panel.lb_norm_ref != tree_panel.CONTEXT_MSG
 
     def _is_norm_reference(self):
-        ''' True iff the currently selected region is currently set as the double
-        normalisation reference region
+        ''' Returns True iff the currently selected region is currently set as the double
+        normalisation reference region.
         '''
         return tree_panel._norm_reference_set() and (self.region is tree_panel.norm_ref)
 
@@ -1258,6 +1321,8 @@ class SelectorPanel(HasTraits):
 
     @on_trait_change('dbl_norm_ref, dbl_norm_ref_numerator')
     def _dbl_norm_ref_x_changed(self, container, trait, new):
+        ''' Event handler that fires when the selector for either the numerator or
+        denominator of the double normalisation reference region changes. '''
         self._refresh_current_view()
 
     def _name_plot(self, region, series_name):
@@ -1513,6 +1578,7 @@ class MenuHandler(Handler):
 
 
 class MainApp(HasTraits):
+    ''' The main application class with overall GUI layout view. '''
     tree_panel = Instance(TreePanel)
     selector_panel = Instance(SelectorPanel)
     plot_panel = Instance(PlotPanel)
