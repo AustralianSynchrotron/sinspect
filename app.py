@@ -12,7 +12,7 @@ from enable.api import ComponentEditor
 from traits.api import Str, Bool, Enum, List, Dict, Any, HTML, \
     HasTraits, Instance, Button, on_trait_change
 from traitsui.api import View, Group, HGroup, VGroup, HSplit, HTMLEditor, \
-    Item, UItem, TreeEditor, TreeNode, Menu, MenuBar, Action, Handler, spring
+    Item, UItem, TreeEditor, Label, TreeNode, Menu, MenuBar, Action, Handler, spring
 from traitsui.key_bindings import KeyBinding, KeyBindings
 from pyface.api import ImageResource, DirectoryDialog, OK, GUI, error
 from fixes import fix_background_color
@@ -40,10 +40,11 @@ APP_WIDTH = 800
 title = "SinSPECt"
 app_icon = os.path.join('resources','app_icon.ico')
 
+# A lookup table with keys that match the possible specs.SPECSRegion.scan_mode values.
 scan_mode_lookup = lambda key: {\
-    'FixedAnalyzerTransmission':{ 'axis' :'binding_axis',
-                                  'label':'Binding energy [eV]',
-                                  'orientation':'reversed',
+    'FixedAnalyzerTransmission':{ 'axis' :'binding_axis',        # scan_mode axis to use
+                                  'label':'Binding energy [eV]', # plot region x-axis label
+                                  'orientation':'reversed',      # plot region x-axis orientation
                                 },
     'ConstantFinalState'       :{ 'axis' :'excitation_axis',
                                   'label':'Excitation energy [eV]',
@@ -1179,6 +1180,17 @@ class SelectorPanel(HasTraits):
         "None" SelectorPanel.
         https://mail.enthought.com/pipermail/enthought-dev/2012-May/031008.html
         '''
+        def vertical_checkbox_group(name, label):
+            ''' Returns a checkbox corresponding to the boolean trait referred to by name
+            with a label below. This saves horizontal space at the expense of vertical.
+            '''
+            group = VGroup()
+            group.content = [
+                UItem(name),
+                Label(label),
+            ]
+            return group
+
         items = []
         if 'counts' in self._instance_traits():
             group1 = HGroup()
@@ -1186,26 +1198,27 @@ class SelectorPanel(HasTraits):
 
             # counts group
             group = HGroup()
-            group.content = []
-            group.content.append(Item('counts', label='Counts'))
+            group.content.append(vertical_checkbox_group('counts', u'\u2003\u2003'))
             group.show_border = True
+            group.label = 'Counts'
             group1.content.append(group)
 
             # channel_counts_x group
-            channel_counts_buttons = [Item(name, label=str(get_name_num(name)))
+            channel_counts_buttons = [vertical_checkbox_group(name, str(get_name_num(name)))
                             for name in sorted(self.get_channel_counts_states())]
-            channel_counts_buttons.append(UItem('bt_cycle_channel_counts'))
+            channel_counts_buttons.append(UItem('bt_cycle_channel_counts', width=-60))
             if len(channel_counts_buttons) > 0:
                 group = HGroup()
+                group.show_left = False
                 group.content = channel_counts_buttons
                 group.show_border = True
                 group.label = 'Channel Counts'
                 group1.content.append(group)
 
             # extended_channels_x group
-            extended_channels_buttons = [Item(name, label=str(get_name_num(name)))
+            extended_channels_buttons = [vertical_checkbox_group(name, str(get_name_num(name)))
                             for name in sorted(self.get_extended_channels_states())]
-            extended_channels_buttons.append(UItem('bt_cycle_extended_channels'))
+            extended_channels_buttons.append(UItem('bt_cycle_extended_channels', width=-60))
             if len(extended_channels_buttons) > 0:
                 group = HGroup()
                 group.content = extended_channels_buttons
@@ -1217,9 +1230,9 @@ class SelectorPanel(HasTraits):
                 # This group is only visible when in double normalisation mode and only
                 # for the double normalisation reference region.
                 group = HGroup()
-                group.content = [UItem('dbl_norm_ref_numerator'),
+                group.content = [UItem('dbl_norm_ref_numerator', width=-40),
                                  UItem('text_divider', style='readonly'),
-                                 UItem('dbl_norm_ref'),
+                                 UItem('dbl_norm_ref', width=-30),
                                 ]
                 group.show_border = True
                 group.label = 'Dbl nrm ref'
