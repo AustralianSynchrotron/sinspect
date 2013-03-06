@@ -19,7 +19,6 @@ from fixes import fix_background_color
 from chaco.api import Plot, ArrayPlotData, PlotAxis, \
     add_default_axes, add_default_grids
 from chaco.tools.api import PanTool, ZoomTool
-from chaco.tools.tool_states import PanState
 from ui_helpers import get_file_from_dialog
 import specs
 import wx
@@ -43,11 +42,11 @@ app_icon = os.path.join('resources','app_icon.ico')
 # A lookup table with keys that match the possible specs.SPECSRegion.scan_mode values.
 scan_mode_lookup = lambda key: {\
     'FixedAnalyzerTransmission':{ 'axis' :'binding_axis',        # scan_mode axis to use
-                                  'label':'Binding energy [eV]', # plot region x-axis label
+                                  'label':'Binding energy (eV)', # plot region x-axis label
                                   'orientation':'reversed',      # plot region x-axis orientation
                                 },
     'ConstantFinalState'       :{ 'axis' :'excitation_axis',
-                                  'label':'Excitation energy [eV]',
+                                  'label':'Excitation energy (eV)',
                                   'orientation':'normal',
                                 },
     'FixedEnergies'            :{ 'axis' :'time_axis',
@@ -55,7 +54,7 @@ scan_mode_lookup = lambda key: {\
                                   'orientation':'normal',
                                 },
     }.get(key,                  { 'axis' :'kinetic_axis',
-                                  'label':'Kinetic energy [eV]',
+                                  'label':'Kinetic energy (eV)',
                                   'orientation':'normal',
                                 },
     ) # last one is the default case
@@ -354,7 +353,7 @@ class TreePanel(HasTraits):
         return False
 
     def normalise(self, region, ys, series_name):
-        ''' A wrapper method for single and souble normalisation that delegates to the
+        ''' A wrapper method for single and double normalisation that delegates to the
         normalisation method desired according to the GUI state.
         '''
         mode = self.get_normalisation_mode()
@@ -737,10 +736,10 @@ class TreePanel(HasTraits):
                       label     = 'label_name',
                       view      = no_view,
                       menu      = Menu(
-                                    Action(name='Set selection region',
-                                           action='handler._menu_set_as_reference(editor,object)'),
                                     Action(name='Set normalisation region',
                                            action='handler._menu_set_as_norm_reference(editor,object)'),
+                                    Action(name='Set selection region',
+                                           action='handler._menu_set_as_reference(editor,object)'),
                                   ),
                       rename_me = False,
                       on_select = _region_select,
@@ -822,113 +821,6 @@ class TreePanel(HasTraits):
                     )
 
 
-class PanToolWithHistory(PanTool):
-    ''' Chaco pan tool '''
-    def __init__(self, *args, **kwargs):
-        self.history_tool = kwargs.get('history_tool', None)
-        if 'history_tool' in kwargs:
-            del kwargs['history_tool']
-        super(PanToolWithHistory, self).__init__(*args, **kwargs)
-
-    def _start_pan(self, event, capture_mouse=False):
-        super(PanToolWithHistory, self)._start_pan(event, capture_mouse=False)
-        if self.history_tool is not None:
-            self._start_pan_xy = self._original_xy
-            # Save the current data range center so this movement can be
-            # undone later.
-            self._prev_state = self.history_tool.data_range_center()
-
-    def _end_pan(self, event):
-        super(PanToolWithHistory, self)._end_pan(event)
-        if self.history_tool is not None:
-            # Only append to the undo history if we have moved a significant amount. 
-            # This avoids conflicts with the single-click undo function.
-            new_xy = np.array((event.x, event.y))
-            old_xy = np.array(self._start_pan_xy)
-            if any(abs(new_xy - old_xy) > 10):
-                current = self.history_tool.data_range_center()
-                prev = self._prev_state
-                if current != prev:
-                    self.history_tool.append_state(PanState(prev, current))
-
-
-class ClickUndoZoomTool(ZoomTool):
-    ''' Chaco zoom tool '''
-    def __init__(self, component=None, undo_button='right', *args, **kwargs):
-        super(ClickUndoZoomTool, self).__init__(component, *args, **kwargs)
-        self.undo_button = undo_button
-        self._reverting = False
-        self.minimum_undo_delta = 3
-
-    def normal_left_down(self, event):
-        ''' Handles the left mouse button being pressed while the tool is
-        in the 'normal' state.
-
-        If the tool is enabled or always on, it starts selecting.
-        '''
-        if self.undo_button == 'left':
-            self._undo_screen_start = (event.x, event.y)
-        super(ClickUndoZoomTool, self).normal_left_down(event)
-
-    def normal_right_down(self, event):
-        ''' Handles the right mouse button being pressed while the tool is
-        in the 'normal' state.
-
-        If the tool is enabled or always on, it starts selecting.
-        '''
-        if self.undo_button == 'right':
-            self._undo_screen_start = (event.x, event.y)
-        super(ClickUndoZoomTool, self).normal_right_down(event)
-
-    def normal_left_up(self, event):
-        if self.undo_button == 'left':
-            if self._mouse_didnt_move(event):
-                self.revert_history()
-
-    def normal_right_up(self, event):
-        if self.undo_button == 'right':
-            if self._mouse_didnt_move(event):
-                self.revert_history()
-
-    def selecting_left_up(self, event):
-        self.normal_left_up(event)
-        super(ClickUndoZoomTool, self).selecting_left_up(event)
-
-    def selecting_right_up(self, event):
-        self.normal_right_up(event)
-        super(ClickUndoZoomTool, self).selecting_right_up(event)
-
-    def _mouse_didnt_move(self, event):
-        start = np.array(self._undo_screen_start)
-        end = np.array((event.x, event.y))
-        return all(abs(end - start) == 0)
-
-    def clear_undo_history(self):
-        self._history_index = 0
-        self._history = self._history[:1]
-
-    def revert_history(self):
-        if self._history_index > 0:
-            self._history_index -= 1
-            self._prev_state_pressed()
-
-    def revert_history_all(self):
-        self._history_index = 0
-        self._reset_state_pressed()
-
-    def _get_mapper_center(self, mapper):
-        bounds = mapper.range.low, mapper.range.high
-        return bounds[0] + (bounds[1] - bounds[0])/2.
-
-    def data_range_center(self):
-        x_center = self._get_mapper_center(self._get_x_mapper())
-        y_center = self._get_mapper_center(self._get_y_mapper())
-        return x_center, y_center
-
-    def append_state(self, state):
-        self._append_state(state, set_index=True)
-
-
 class PlotPanel(HasTraits):
     ''' The Chaco plot area.
     '''
@@ -937,17 +829,24 @@ class PlotPanel(HasTraits):
     LAYERS = ['background', 'foreground', 'highlight']
 
     def __init__(self, **traits):
+        class MyPlotClass(Plot):
+            ''' A Plot class that exposes the normal_left_dclick event handler. '''
+            def normal_left_dclick(self, event):
+                ''' Handles a double-click event on the Plot canvas. We want to reset the
+                zoom in this event. '''
+                plot_panel.reset_view()
+
         super(PlotPanel, self).__init__(**traits)   # HasTraits.__init__(self, **traits)
         self.plot_data = ArrayPlotData()
-        self.plot = Plot(self.plot_data)
+        self.plot = MyPlotClass(self.plot_data)
 
         # Extend the plot panel's list of drawing layers
         ndx = self.plot.draw_order.index('plot')
         self.plot.draw_order[ndx:ndx] = self.LAYERS
 
         self.plot.value_range.low = 0               # fix y-axis min to 0
-        self.plot.index_axis = PlotAxis(self.plot, orientation='bottom', title='Energy [eV]')
-        self.plot.y_axis = PlotAxis(self.plot, orientation='left', title='Intensity [Counts]')
+        self.plot.index_axis = PlotAxis(self.plot, orientation='bottom', title='Energy (eV)')
+        self.plot.y_axis = PlotAxis(self.plot, orientation='left', title='Intensity (Counts)')
 
         # Now add a transparent 1st plot series that never gets removed
         # since if we remove the first instance via remove() the mapper and tools are also removed
@@ -1055,14 +954,10 @@ class PlotPanel(HasTraits):
         add_default_grids(plot)
         add_default_axes(plot)
 
-        # The ZoomTool tool is stateful and allows drawing a zoom
-        # box to select a zoom region.
-        self.zoom_tool = ClickUndoZoomTool(plot, tool_mode="box", always_on=True)
-
-        # The PanTool allows panning around the plot
-        plot.tools.append(PanToolWithHistory(plot, drag_button='right',
-                          history_tool=self.zoom_tool))
-
+        # Add a ZoomTool which enables zooming to a region,
+        # and a PanTool which enables panning.
+        self.zoom_tool = ZoomTool(plot, tool_mode="box", always_on=True)
+        plot.tools.append(PanTool(plot, drag_button='right'))
         plot.overlays.append(self.zoom_tool)
 
         return plot.value_mapper, plot.index_mapper
@@ -1071,7 +966,6 @@ class PlotPanel(HasTraits):
         ''' Reset the view limits. '''
         self.plot.index_range.reset()
         self.plot.value_range.reset()
-        self.zoom_tool.clear_undo_history()
         
     traits_view =   View(
                         UItem(
@@ -1267,6 +1161,7 @@ class SelectorPanel(HasTraits):
         having a corresponding Item in the selection panel View.
         '''
         self.toggle_to_force_refresh = not self.toggle_to_force_refresh
+        self._refresh_current_view()
 
     def _counts_changed(self, trait, old, new):
         ''' Trait event handler
@@ -1532,14 +1427,13 @@ class HelpBox(HasTraits):
         self.help_text = \
     """
     <h3>Usage</h3>
-
+    
     <h5>Plot region navigation</h5>
     <em>Left drag</em>: Zoom a selection of the plot <br>
     <em>Right drag</em>: Pan the plot <br>
-    <em>Right click</em>: Undo zoom <br>
-    <em>[Esc]</em>: Reset zoom/pan <br>
+    <em>Left double click</em>: Reset zoom/pan <br>
     <em>Mousewheel</em>: Zoom in/out <br>
-
+    
     <h5>Keyboard shortcuts for tree selections</h5>
     <em>+</em>, <em>=</em> : Select <br>
     <em>-</em> : Deselect <br>
