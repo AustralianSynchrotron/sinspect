@@ -22,6 +22,7 @@ from chaco.tools.api import PanTool, ZoomTool
 from ui_helpers import get_file_from_dialog
 import specs
 import wx
+from help import open_help_index
 
 __author__ = "Gary Ruben"
 __copyright__ = "Copyright (c) 2013, Synchrotron Light Source Australia Pty Ltd"
@@ -1402,7 +1403,9 @@ menubar = MenuBar(
                 action = 'quit' ),
         name = 'File'
     ),
-    Menu( 
+    Menu(
+        Action( name   = 'Help...',
+                action = 'show_help' ),
         Action( name   = 'About...',
                 action = 'show_about' ),
         name = 'Help'
@@ -1483,6 +1486,10 @@ class MenuHandler(Handler):
         help_box = HelpBox()
         help_box.edit_traits()
 
+    def show_help(self, info):
+        ''' Display help in a browser. '''
+        open_help_index()
+    
 
 class MainApp(HasTraits):
     ''' The main application class with overall GUI layout view. '''
