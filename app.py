@@ -60,12 +60,12 @@ scan_mode_lookup = lambda key: {\
                                 },
     ) # last one is the default case
 
-# SPECSRegion, SPECSGroup and SpecsFile are Traited versions of SPECS xml file classes
+# SpRegion, SpGroup and SpFile are Traited versions of SPECS xml file classes
 # that represent nodes in the TreeEditor widget
 
-class SPECSRegion(HasTraits):
-    ''' The traited SPECSRegion contains a specs.SPECSRegion object and
-    represents a Region node in the TreeEditor
+class SpRegion(HasTraits):
+    ''' SpRegion contains a specs.SPECSRegion object and represents a Region node in the
+    TreeEditor
     '''
     # This is the labeled name which is relected in the tree label
     label_name = Str('<unknown>')
@@ -73,21 +73,21 @@ class SPECSRegion(HasTraits):
     # export filename etc.
     name = Str('<unknown>')
     region = Instance(specs.SPECSRegion)    # The reference to the contained region object
-    group = Instance('SPECSGroup')          # A reference to the containing group
+    group = Instance('SpGroup')             # A reference to the containing group
     selection = Instance('SelectorPanel')   # A string argument here allows a forward reference
 
     def __init__(self, name, region, group, **traits):
         ''' name is a string with the name of the region
         region is a specs.SPECSRegion instance
         '''
-        super(SPECSRegion, self).__init__(**traits) # HasTraits.__init__(self, **traits)
+        super(SpRegion, self).__init__(**traits)    # HasTraits.__init__(self, **traits)
         self.name = name
         self.label_name = '* {}'.format(name) # initialise label to this
         self.zero_fill_empty_channels(region)
         self.region = region
         self.group = group
         # Add a reference within the specs.SPECSRegion object in case we want access to its
-        # Traited SPECSRegion owner
+        # Traited SpRegion owner
         self.region.owner = self
         self.selection = SelectorPanel(self)
         # Instantiation of the SelectorPanel creates it with self.selection.counts==False
@@ -242,16 +242,16 @@ class SPECSRegion(HasTraits):
         return numer / denom
 
 
-class SPECSGroup(HasTraits):
+class SpGroup(HasTraits):
     ''' A group node in the TreeEditor '''
     name = Str('<unknown>')
-    specs_regions = List(SPECSRegion)   # container for the subordinate regions
+    specs_regions = List(SpRegion)   # container for the subordinate regions
 
 
-class SpecsFile(HasTraits):
+class SpFile(HasTraits):
     ''' The file node in the TreeEditor '''
     name = Str('<unknown>')
-    specs_groups = List(SPECSGroup)     # container for the subordinate groups
+    specs_groups = List(SpGroup)     # container for the subordinate groups
 
     def _uniquify_names(self, names):
         ''' names is a list of strings. This generator function ensures all strings in
@@ -274,14 +274,14 @@ class SpecsFile(HasTraits):
         group_names = [g.name for g in s.groups]
         uniquify_group_gen = self._uniquify_names(group_names)
         for group in s.groups:
-            specs_group = SPECSGroup(name=uniquify_group_gen.next(), specs_regions=[])
+            specs_group = SpGroup(name=uniquify_group_gen.next(), specs_regions=[])
             # Get the names from the underlying specs.SPECSRegion objects
             region_names = [r.name for r in group.regions]
             # Force them to be unique
             uniquify_region_gen = self._uniquify_names(region_names)
-            # Now create our Traited SPECSRegion objects
+            # Now create our Traited SpRegion objects
             for region in group.regions:
-                specs_group.specs_regions.append(SPECSRegion(name=uniquify_region_gen.next(),
+                specs_group.specs_regions.append(SpRegion(name=uniquify_region_gen.next(),
                                                         region=region, group=specs_group))
             self.specs_groups.append(specs_group)
         return self
@@ -290,7 +290,7 @@ class SpecsFile(HasTraits):
 class TreePanel(HasTraits):
     ''' The tree widget '''
     CONTEXT_MSG = '(Set from right-click menu)'
-    specs_file = Instance(SpecsFile)
+    specs_file = Instance(SpFile)
     file_path = Str(None)
     most_recent_path = Str('')
     # When a selection is made this holds a list of references to selected tree nodes
@@ -305,8 +305,8 @@ class TreePanel(HasTraits):
     lb_copy_ref = Str(CONTEXT_MSG)
     lb_norm_ref = Str(CONTEXT_MSG)
     extended_channel_ref = Enum('None', 1, 2, 3, 4, 5, 6, 7, 8, 9)('None')
-    ref = Instance(SPECSRegion)
-    norm_ref = Instance(SPECSRegion)
+    ref = Instance(SpRegion)
+    norm_ref = Instance(SpRegion)
     cb_header = Bool(True)
     delimiter = Enum('tab','space','comma')('tab')
 
@@ -329,7 +329,7 @@ class TreePanel(HasTraits):
         self.name = self.file_path
         try:
             GUI.set_busy()                      # set hourglass         @UndefinedVariable
-            self.specs_file = SpecsFile().open(self.file_path)
+            self.specs_file = SpFile().open(self.file_path)
         except:
             pass
         GUI.set_busy(False)                     # reset hourglass       @UndefinedVariable
@@ -572,14 +572,14 @@ class TreePanel(HasTraits):
         if self.ref is not None:
             trait_dict = self.ref.selection.get_trait_states()
             for r in tree_panel.node_selection:
-                if isinstance(r, SPECSRegion):
+                if isinstance(r, SpRegion):
                     # paste all counts, channel_counts_ and extended_channels_ states
                     r.selection.set(**trait_dict)
 
     def _bt_set_reference_changed(self):
         ''' Sets the current tree node object as the source for normalisation. '''
         s = tree_panel.node_selection
-        if len(s) > 0 and isinstance(s[0], SPECSRegion):
+        if len(s) > 0 and isinstance(s[0], SpRegion):
             tree_panel.norm_ref = s[0]
             tree_panel.lb_norm_ref = tree_panel.norm_ref.name
             # Now refresh the selection panel to force its drop-down selector to appear
@@ -590,14 +590,14 @@ class TreePanel(HasTraits):
         of the plots in the current selection to ensure that they all have the latest
         normalisation applied
         '''
-        if isinstance(self.node_selection[0], SPECSRegion):
+        if isinstance(self.node_selection[0], SpRegion):
             self.node_selection[0].selection._refresh_current_view()
 
     def _bt_clear_reference_changed(self):
         ''' Button event handler clears the double normalisation reference '''
         self._clear_dbl_nrm_ref_label()
         selected = self.node_selection[0]
-        if isinstance(selected, SPECSRegion):
+        if isinstance(selected, SpRegion):
             selected.selection.refresh_dbl_norm_ref()
 
     def _region_select(self):
@@ -648,9 +648,9 @@ class TreePanel(HasTraits):
         try:
             GUI.set_busy()                      # set hourglass         @UndefinedVariable
             for n in self.node_selection:
-                if isinstance(n, SPECSRegion):
+                if isinstance(n, SpRegion):
                     n.selection.region_cycle()
-                elif isinstance(n, SPECSGroup):
+                elif isinstance(n, SpGroup):
                     for r in n.specs_regions:
                         r.selection.region_cycle()
         except:
@@ -664,10 +664,10 @@ class TreePanel(HasTraits):
         try:
             GUI.set_busy()                      # set hourglass         @UndefinedVariable
             for n in selection:
-                if isinstance(n, SPECSRegion):
+                if isinstance(n, SpRegion):
                     n.selection.counts = \
                         not n.selection.counts if set_state=='toggle' else set_state
-                elif isinstance(n, SPECSGroup):
+                elif isinstance(n, SpGroup):
                     for r in n.specs_regions:
                         r.selection.counts = \
                             not r.selection.counts if set_state=='toggle' else set_state
@@ -710,29 +710,29 @@ class TreePanel(HasTraits):
     # Tree editor
     tree_editor = TreeEditor(
         nodes = [
-            TreeNode( node_for  = [SpecsFile],
+            TreeNode( node_for  = [SpFile],
                       auto_open = True,
                       children  = 'specs_groups',
                       label     = 'name',
                       view      = no_view,
-                      add       = [SPECSGroup],
+                      add       = [SpGroup],
                       menu      = Menu(),
                       #on_dclick = _bt_open_file_changed,
                       rename_me = False,
                     ),
 
-            TreeNode( node_for  = [SPECSGroup],
+            TreeNode( node_for  = [SpGroup],
                       auto_open = True,
                       children  = 'specs_regions',
                       label     = 'name',
                       view      = no_view,
-                      add       = [SPECSRegion],
+                      add       = [SpRegion],
                       menu      = Menu(),
                       rename_me = False,
                       on_dclick = _group_dclick,
                     ),
 
-            TreeNode( node_for  = [SPECSRegion],
+            TreeNode( node_for  = [SpRegion],
                       auto_open = True,
                       label     = 'label_name',
                       view      = no_view,
@@ -1018,7 +1018,7 @@ class SelectorPanel(HasTraits):
     global plot_panel
 
     name = Str('<unknown>')
-    region = Instance(SPECSRegion)
+    region = Instance(SpRegion)
     last_selection = Dict   # stores counts and channel traits whenever a checkbox is clicked
     cycle_state = Enum('counts_on', 'channels_on', 'all_on')
     cycle_channel_counts_state = Enum('all_on', 'all_off')('all_on')
@@ -1525,7 +1525,7 @@ class MainApp(HasTraits):
 
 if __name__ == "__main__":
     np.seterr(divide='ignore', invalid='ignore')
-    tree_panel = TreePanel(specs_file=SpecsFile())
+    tree_panel = TreePanel(specs_file=SpFile())
     selector_panel = SelectorPanel()
     plot_panel = PlotPanel()
     main_app = MainApp(

@@ -4,7 +4,7 @@ from nose import SkipTest
 from nose.tools import eq_, ok_
 import os
 import numpy as np
-from app import SpecsFile, TreePanel
+from app import SpFile, TreePanel
 
 
 TESTDATA_DIR = 'testdata'
@@ -17,7 +17,7 @@ code. Changes to test_data.xml will cause failures in these tests.
 class AxisTypeTest(unittest.TestCase):
     def setUp(self):
         filename = os.path.join(TESTDATA_DIR, 'test_data.xml')
-        self.specs_file = SpecsFile().open(filename)
+        self.specs_file = SpFile().open(filename)
 
     def get_x_axis_test(self):
         region = self.specs_file.specs_groups[0].specs_regions[0].region
@@ -27,8 +27,8 @@ class AxisTypeTest(unittest.TestCase):
 class SingleNormalisationTest(unittest.TestCase):
     def setUp(self):
         filename = os.path.join(TESTDATA_DIR, 'test_data.xml')
-        self.tree_panel = TreePanel(specs_file=SpecsFile())
-        self.specs_file = SpecsFile().open(filename)
+        self.tree_panel = TreePanel(specs_file=SpFile())
+        self.specs_file = SpFile().open(filename)
 
     def single_normalisation_test(self):
         raise SkipTest
@@ -44,7 +44,7 @@ class SingleNormalisationTest(unittest.TestCase):
 class DoubleNormalisationTest(unittest.TestCase):
     def setUp(self):
         filename = os.path.join(TESTDATA_DIR, 'test_data.xml')
-        self.specs_file = SpecsFile().open(filename)
+        self.specs_file = SpFile().open(filename)
 
     def double_normalisation_test(self):
         raise SkipTest

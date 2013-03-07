@@ -2,7 +2,7 @@ import unittest
 import nose
 from nose.tools import eq_, ok_
 import os
-from app import SpecsFile
+from app import SpFile
 
 
 TESTDATA_DIR = 'testdata'
@@ -15,14 +15,14 @@ code. Changes to test_data.xml will cause failures in these tests.
 class DatasetLoadingTest(unittest.TestCase):
     def simple_load_test(self):
         filename = os.path.join(TESTDATA_DIR, 'test_data.xml')
-        specs_file = SpecsFile().open(filename)
-        ok_(isinstance(specs_file, SpecsFile))
+        specs_file = SpFile().open(filename)
+        ok_(isinstance(specs_file, SpFile))
 
 
 class CorrectLoadingTest(unittest.TestCase):
     def setUp(self):
         filename = os.path.join(TESTDATA_DIR, 'test_data.xml')
-        self.specs_file = SpecsFile().open(filename)
+        self.specs_file = SpFile().open(filename)
 
     def count_groups_test(self):
         eq_(len(self.specs_file.specs_groups), 2)
