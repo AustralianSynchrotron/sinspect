@@ -38,10 +38,10 @@ __email__ = "gruben@versi.edu.au"
 fix_background_color()
 APP_WIDTH = 800
 title = "SinSPECt"
-app_icon = os.path.join('resources','app_icon.ico')
+app_icon = os.path.join('resources', 'app_icon.ico')
 
 # A lookup table with keys that match the possible specs.SPECSRegion.scan_mode values.
-scan_mode_lookup = lambda key: {\
+scan_mode_lookup = lambda key: {
     'FixedAnalyzerTransmission':{ 'axis' :'binding_axis',        # scan_mode axis to use
                                   'label':'Binding energy (eV)', # plot region x-axis label
                                   'orientation':'reversed',      # plot region x-axis orientation
@@ -59,6 +59,7 @@ scan_mode_lookup = lambda key: {\
                                   'orientation':'normal',
                                 },
     ) # last one is the default case
+
 
 # SpRegion, SpGroup and SpFile are Traited versions of SPECS xml file classes
 # that represent nodes in the TreeEditor widget
@@ -156,7 +157,7 @@ class SpRegion(HasTraits):
         ys = ys.copy()
         if normalisation_ref != 'None':
             # normalisation_ref is in the range 1-9
-            ys /= self.region.extended_channels[:,normalisation_ref-1]
+            ys /= self.region.extended_channels[:, normalisation_ref - 1]
         return ys
 
     def _x_ranges_match(self, region, rtol=1e-6):
@@ -168,14 +169,14 @@ class SpRegion(HasTraits):
         xs = self.get_x_axis()
         xs_ref = region.get_x_axis()
         if np.allclose([xs[0], xs[-1]], [xs_ref[0], xs_ref[-1]],
-                       atol=(xs[-1]-xs[0])/(xs.size-1)*rtol) and (xs.size==xs_ref.size):
+                       atol = (xs[-1]-xs[0]) / (xs.size-1) * rtol) and (xs.size==xs_ref.size):
             return True
         return False
 
     def _e_r(self):
         ''' Computes the e_r term described in the SinSPECt Sphinx docs. '''
         r = self.selection.dbl_norm_ref
-        return self.region.extended_channels[:,r-1]
+        return self.region.extended_channels[:, r-1]
 
     def _MR(self, R, s):
         ''' Computes the M^R term described in the SinSPECt Sphinx docs.
@@ -187,7 +188,7 @@ class SpRegion(HasTraits):
             mr = R.selection.compute_counts()
         else:
             # s in {1..9}: M^R = e^R_s
-            mr = R.region.extended_channels[:,s-1]
+            mr = R.region.extended_channels[:, s-1]
         return mr
 
     def double_normalisation_denominator(self, R, s):
@@ -196,7 +197,7 @@ class SpRegion(HasTraits):
         s is the value from the Enum {'Counts', 1..9} of the drop-down menu selection.
         '''
         mr = self._MR(R, s)
-        e = R.region.extended_channels[:,R.selection.dbl_norm_ref-1]
+        e = R.region.extended_channels[:, R.selection.dbl_norm_ref-1]
         return mr / e
 
     def double_normalise_channel(self, series_name):
@@ -349,7 +350,7 @@ class TreePanel(HasTraits):
         xs = region1.get_x_axis()
         xs_ref = region2.get_x_axis()
         if np.allclose([xs[0], xs[-1]], [xs_ref[0], xs_ref[-1]],
-                       atol=(xs[-1]-xs[0])/(xs.size-1)*rtol):
+                       atol = (xs[-1]-xs[0]) / (xs.size-1) * rtol):
             return True
         return False
 
@@ -377,7 +378,7 @@ class TreePanel(HasTraits):
         '''
         cc_dict = r.selection.get_channel_counts_states()
         # make a string indicating the channel_counts columns summed to
-        # obtain the counts column  
+        # obtain the counts column
         counts_label = '+'.join([str(get_name_num(i))
                                  for i in sorted(cc_dict) if cc_dict[i]])
         return counts_label
@@ -754,20 +755,28 @@ class TreePanel(HasTraits):
 
     # shortcut keys
     key_bindings = KeyBindings(
-        KeyBinding( binding1    = 'Space',
-                    binding2    = 't',
-                    description = 'Toggle Selection',
-                    method_name = '_toggle_key' ),
-        KeyBinding( binding1    = '+',
-                    binding2    = '=',
-                    description = 'Select',
-                    method_name = '_select_key' ),
-        KeyBinding( binding1    = '-',
-                    description = 'Deselect',
-                    method_name = '_deselect_key' ),
-        KeyBinding( binding1    = 'c',
-                    description = 'Cycle region',
-                    method_name = '_cycle_region_key' ),
+        KeyBinding(
+            binding1    = 'Space',
+            binding2    = 't',
+            description = 'Toggle Selection',
+            method_name = '_toggle_key'
+        ),
+        KeyBinding(
+            binding1    = '+',
+            binding2    = '=',
+            description = 'Select',
+            method_name = '_select_key'
+        ),
+        KeyBinding(
+            binding1    = '-',
+            description = 'Deselect',
+            method_name = '_deselect_key'
+        ),
+        KeyBinding(
+            binding1    = 'c',
+            description = 'Cycle region',
+            method_name = '_cycle_region_key'
+        ),
     )
 
     # The tree view
@@ -1125,9 +1134,9 @@ class SelectorPanel(HasTraits):
                 # This group is only visible when in double normalisation mode and only
                 # for the double normalisation reference region.
                 group = HGroup()
-                group.content = [UItem('dbl_norm_ref_numerator', width=-40),
+                group.content = [UItem('dbl_norm_ref_numerator', width=-50),
                                  UItem('text_divider', style='readonly'),
-                                 UItem('dbl_norm_ref', width=-30),
+                                 UItem('dbl_norm_ref', width=-42),
                                 ]
                 group.show_border = True
                 group.label = 'Dbl nrm ref'
