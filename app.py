@@ -1446,6 +1446,14 @@ class HelpBox(HasTraits):
     <em>Left double click</em>: Reset zoom/pan <br>
     <em>Mousewheel</em>: Zoom in/out <br>
     
+    <h5>Tree label indicators</h5>
+    <em>* region label</em>: Export this region. Counts includes all channels <br>
+    <em>+ region label</em>: Export this region. Counts includes a subset of channels <br>
+    <em>[blank] region label</em>: This region will not be exported <br>
+    
+    Double-click a group label to toggle contained regions between * and [blank] setting <br>
+    Double-click a region label to cycle between *, [blank] and all channels display <br>
+    
     <h5>Keyboard shortcuts for tree selections</h5>
     <em>+</em>, <em>=</em> : Select <br>
     <em>-</em> : Deselect <br>
