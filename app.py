@@ -11,8 +11,8 @@ import numpy as np
 from enable.api import ComponentEditor
 from traits.api import Str, Bool, Enum, List, Dict, Any, HTML, \
     HasTraits, Instance, Button, on_trait_change
-from traitsui.api import View, Group, HGroup, VGroup, HSplit, HTMLEditor, \
-    Item, UItem, TreeEditor, Label, TreeNode, Menu, MenuBar, Action, Handler, spring
+from traitsui.api import View, Group, HGroup, VGroup, HSplit, HTMLEditor, ToolBar, \
+    Item, UItem, TreeEditor, Label, TreeNode, Menu, MenuBar, Action, Handler
 from traitsui.key_bindings import KeyBinding, KeyBindings
 from pyface.api import ImageResource, DirectoryDialog, OK, GUI, error
 from fixes import fix_background_color
@@ -130,6 +130,7 @@ class SpRegion(HasTraits):
         no     channels selected:                             space, space, name
         '''
         s = self.selection
+
         # see whether a region is empty
         if s.region.region.channel_counts.size == 0:
             empty_indicator = ' (empty)'
@@ -143,11 +144,15 @@ class SpRegion(HasTraits):
         channel_counts_states = s.get_channel_counts_states().values()
         if counts_state:
             if False not in channel_counts_states:
-                label = '* {}{}'.format(self.name, empty_indicator)
+                state = '*'
             else:
-                label = '+ {}{}'.format(self.name, empty_indicator)
+                state = '+'
         else:
-            label = '  {}{}'.format(self.name, empty_indicator)
+            state = ' '
+
+        # check whether region is the double-normalisation reference        
+        ref_indicator = '(ref)' if s._is_norm_reference() else ''
+        label = '{}{} {}{}'.format(ref_indicator, state, self.name, empty_indicator)
         return label
 
     def normalise_self(self, ys):
@@ -337,10 +342,13 @@ class TreePanel(HasTraits):
 
     def _clear_dbl_nrm_ref_label(self):
         ''' The double-normalisation reference starts off set to None, indicating that
-        double normalisation should bot be done. Call this to reset to that initial state.
+        double normalisation should not be done. Call this to reset to that initial state.
         '''
+        current_ref_region = self.norm_ref
         self.lb_norm_ref = self.CONTEXT_MSG
         self.norm_ref = None
+        if current_ref_region is not None:
+            current_ref_region.update_label()
 
     def _x_ranges_match(self, region1, region2, rtol=1e-6):
         ''' Verify that x-ranges of both regions match by checking that the start and end
@@ -581,10 +589,15 @@ class TreePanel(HasTraits):
         ''' Sets the current tree node object as the source for normalisation. '''
         s = tree_panel.node_selection
         if len(s) > 0 and isinstance(s[0], SpRegion):
+            current_ref_region = tree_panel.norm_ref
+
             tree_panel.norm_ref = s[0]
             tree_panel.lb_norm_ref = tree_panel.norm_ref.name
             # Now refresh the selection panel to force its drop-down selector to appear
             s[0].selection.refresh_dbl_norm_ref()
+
+            if current_ref_region is not None:
+                current_ref_region.update_label()
 
     def _extended_channel_ref_changed(self):
         ''' If the normalisation channel drop-down selection is changed, force a refresh
@@ -688,21 +701,12 @@ class TreePanel(HasTraits):
         ''' set counts of selection False '''
         self._change_selection_state(self.node_selection, set_state=False)
 
-    class TreeHandler(Handler):
-        ''' This Handler supports the right-click menu actions '''
-        def _menu_set_as_reference(self, editor, obj):
-            ''' Sets the current tree node object as the source for copying state to
-            selected tree items.
-            '''
-            tree_panel.ref = obj
-            tree_panel.lb_copy_ref = obj.name
-
-        def _menu_set_as_norm_reference(self, editor, obj):
-            ''' Sets the current tree node object as the source for normalisation. '''
-            tree_panel.norm_ref = obj
-            tree_panel.lb_norm_ref = obj.name
-            # Now refresh the selection panel to force its drop-down selector to appear
-            tree_panel.node_selection[0].selection.refresh_dbl_norm_ref()
+    def _set_copy_paste_source(self):
+        ''' Sets the current tree node object as the source for normalisation. '''
+        s = tree_panel.node_selection
+        if len(s) > 0 and isinstance(s[0], SpRegion):
+            tree_panel.ref = s[0]
+            tree_panel.lb_copy_ref = tree_panel.ref.name
 
 
     # View for objects that aren't edited
@@ -737,12 +741,7 @@ class TreePanel(HasTraits):
                       auto_open = True,
                       label     = 'label_name',
                       view      = no_view,
-                      menu      = Menu(
-                                    Action(name='Set normalisation region',
-                                           action='handler._menu_set_as_norm_reference(editor,object)'),
-                                    Action(name='Set selection region',
-                                           action='handler._menu_set_as_reference(editor,object)'),
-                                  ),
+                      menu      = Menu(),
                       rename_me = False,
                       on_select = _region_select,
                       on_dclick = _region_dclick,
@@ -779,9 +778,63 @@ class TreePanel(HasTraits):
         ),
     )
 
+    # Toolbar and menu actions
+    load_file_action = Action(
+        name = 'Open',
+        action = '_bt_open_file_changed',
+        tooltip = 'Open SPECS file',
+        image = ImageResource('resources/folder_vertical_open.png')
+    )
+    export_action = Action(
+        name = 'Export',
+        action = '_bt_export_file_changed',
+        tooltip = "Export marked regions",
+        enabled_when = 'object._has_data()',
+        image = ImageResource("resources/page_white_go.png")
+    )
+    copy_action = Action(
+        name = "Copy",
+        action = '_set_copy_paste_source',
+        tooltip = "Copy selected region settings",
+        enabled_when = 'object._has_data()',
+        image = ImageResource("resources/page_copy.png")
+    )
+    paste_action = Action(
+        name = 'Paste',
+        action = '_bt_copy_to_selection_changed',
+        tooltip = 'Paste selected region settings',
+        enabled_when = 'object._reference_set()',
+        image = ImageResource('resources/page_white_paste.png')
+    )
+    dbl_norm_action = Action(
+        name = 'Dbl Norm',
+        action = '_bt_set_reference_changed',
+        tooltip = 'Set region as double normalisation reference',
+        enabled_when = 'object._has_data()',
+        image = ImageResource('resources/bookmark_red.png')
+    )
+    clear_dbl_norm_action = Action(
+        name = 'Clear Dbl Norm',
+        action = '_bt_clear_reference_changed',
+        tooltip = 'Clear double normalisation reference',
+        enabled_when = 'object._has_data() and object._norm_reference_set()',
+        image = ImageResource('resources/cross.png')
+    )
+
+    toolbar = ToolBar(
+        copy_action, paste_action,
+        '|',
+        load_file_action, export_action,
+        '|',
+        dbl_norm_action,
+        clear_dbl_norm_action,
+
+        show_tool_names = False,
+        image_size = (24, 24),
+    )
+
     # The tree view
     traits_view =   View(
-                        UItem('bt_open_file'),
                         VGroup(
                             HGroup(
                                 Item('extended_channel_ref', label='ref:',
@@ -792,42 +845,20 @@ class TreePanel(HasTraits):
                         ),
                         VGroup(
                             HGroup(
-                                Item('lb_norm_ref', label='Region', style='readonly'),
+                                Item('cb_header', label='Include header'),
+                                Item('delimiter'),
                             ),
-                            UItem('bt_set_reference',
-                                  visible_when='not object._norm_reference_set()',
-                                  enabled_when='object._has_data()'),
-                            UItem('bt_clear_reference',
-                                  visible_when='object._norm_reference_set()'),
-                            label = 'Double normalisation by chosen spectrum',
-                            show_border = True,
-                        ),
-                        VGroup(
-                            HGroup(
-                                Item('lb_copy_ref', label='Region', style='readonly'),
-                                spring,
-                                UItem('bt_copy_to_selection',
-                                      enabled_when='object._reference_set()'),
-                            ),
-                            label = 'Paste selection region',
+                            enabled_when = 'object._has_data()',
+                            label = 'Data export settings',
                             show_border = True,
                         ),
                         UItem(
                             name = 'specs_file',
                             editor = tree_editor,
                         ),
-                        VGroup(
-                            HGroup(
-                                Item('cb_header', label='Include header'),
-                                Item('delimiter'),
-                            ),
-                            UItem('bt_export_file'),
-                            enabled_when = 'object._has_data()',
-                            label = 'Data Export',
-                            show_border = True,
-                        ),
                         key_bindings = key_bindings,
-                        handler = TreeHandler(),
+                        kind = 'panel',
+                        toolbar = toolbar,
                     )
 
 
@@ -984,6 +1015,7 @@ class PlotPanel(HasTraits):
                             show_label=False
                         ),
                         resizable=True,
+                        kind = 'panel',
                     )
 
 
@@ -1155,13 +1187,14 @@ class SelectorPanel(HasTraits):
 
             group1.label = self.region.name
             group1.show_border = True
+
             # Ideally, the next commented-out line would work, but this thread points to a
             # problem: http://thread.gmane.org/gmane.comp.python.enthought.devel/22603
             # # group1.layout = 'flow'
             # Setting group.show_border = False does partially work, but leaves buttons
             # visible that shouldn't be.
             items.append(group1)
-        return View(*items)
+        return View(*items, kind='panel')
 
     def refresh_dbl_norm_ref(self):
         ''' Forces the traitsui visible_when conditions to be checked.
@@ -1407,7 +1440,7 @@ class SelectorPanel(HasTraits):
 
 # The application menu bar
 menubar = MenuBar(
-    Menu( 
+    Menu(
         Action( name   = 'Quit', 
                 action = 'quit' ),
         name = 'File'
