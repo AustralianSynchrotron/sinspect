@@ -830,7 +830,7 @@ class TreePanel(HasTraits):
         clear_dbl_norm_action,
 
         show_tool_names = False,
-        image_size = (24, 24),
+        image_size = (32, 32),
     )
 
     # The tree view
