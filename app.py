@@ -802,7 +802,7 @@ class TreePanel(HasTraits):
     paste_action = Action(
         name = 'Paste',
         action = '_bt_copy_to_selection_changed',
-        tooltip = 'Paste selected region settings',
+        tooltip = 'Paste region settings',
         enabled_when = 'object._reference_set()',
         image = ImageResource('resources/page_white_paste.png')
     )
@@ -830,7 +830,6 @@ class TreePanel(HasTraits):
         clear_dbl_norm_action,
 
         show_tool_names = False,
-        image_size = (32, 32),
     )
 
     # The tree view
@@ -1064,8 +1063,14 @@ class SelectorPanel(HasTraits):
     cycle_state = Enum('counts_on', 'channels_on', 'all_on')
     cycle_channel_counts_state = Enum('all_on', 'all_off')('all_on')
     cycle_extended_channels_state = Enum('all_on', 'all_off')('all_off')
-    bt_cycle_channel_counts = Button('All on/off')
-    bt_cycle_extended_channels = Button('All on/off')
+    bt_cycle_channel_counts = Button(
+        image = ImageResource('resources/toggle.png'), style = 'toolbar',
+        width_padding = 0, height_padding = 0,
+    )
+    bt_cycle_extended_channels = Button(
+        image = ImageResource('resources/toggle.png'), style = 'toolbar',
+        width_padding = 0, height_padding = 0,
+    )
     dbl_norm_ref_numerator = Enum('Counts', 1, 2, 3, 4, 5, 6, 7, 8, 9)(2)
     dbl_norm_ref = Enum(1, 2, 3, 4, 5, 6, 7, 8, 9)(3)
     text_divider = '/'
@@ -1142,7 +1147,8 @@ class SelectorPanel(HasTraits):
             # channel_counts_x group
             channel_counts_buttons = [vertical_checkbox_group(name, str(get_name_num(name)))
                             for name in sorted(self.get_channel_counts_states())]
-            channel_counts_buttons.append(UItem('bt_cycle_channel_counts', width=-60))
+            channel_counts_buttons.append(UItem('bt_cycle_channel_counts', style='custom'))
+
             if len(channel_counts_buttons) > 0:
                 group = HGroup()
                 group.show_left = False
@@ -1154,7 +1160,7 @@ class SelectorPanel(HasTraits):
             # extended_channels_x group
             extended_channels_buttons = [vertical_checkbox_group(name, str(get_name_num(name)))
                             for name in sorted(self.get_extended_channels_states())]
-            extended_channels_buttons.append(UItem('bt_cycle_extended_channels', width=-60))
+            extended_channels_buttons.append(UItem('bt_cycle_extended_channels', style='custom'))
             if len(extended_channels_buttons) > 0:
                 group = HGroup()
                 group.content = extended_channels_buttons
