@@ -10,8 +10,8 @@
 ; (To generate a new GUID, click Tools | Generate GUID inside the IDE.)
 AppId={{18FE77C5-3895-43F5-A832-FD36D396F165}
 AppName=SinSPECt
-AppVersion=0.2rc2
-;AppVerName=SinSPECt 0.2rc2
+AppVersion=0.3
+;AppVerName=SinSPECt 0.3
 AppPublisher=Australian Synchrotron
 AppPublisherURL=http://www.synchrotron.org.au/sinspect
 AppSupportURL=http://www.synchrotron.org.au/sinspect
@@ -37,12 +37,10 @@ Name: "quicklaunchicon"; Description: "{cm:CreateQuickLaunchIcon}"; GroupDescrip
 Source: "C:\Users\gary\VeRSI\NeCTAR_AS_SXR_tool\SinSPECt\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "C:\Users\gary\VeRSI\NeCTAR_AS_SXR_tool\SinSPECt\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "C:\Users\gary\VeRSI\NeCTAR_AS_SXR_tool\SinSPECt\README.rst"; DestDir: "{app}"; Flags: ignoreversion
-Source: "C:\Users\gary\VeRSI\NeCTAR_AS_SXR_tool\SinSPECt\app.py"; DestDir: "{app}"; Flags: ignoreversion
-Source: "C:\Users\gary\VeRSI\NeCTAR_AS_SXR_tool\SinSPECt\ui_helpers.py"; DestDir: "{app}"; Flags: ignoreversion
-Source: "C:\Users\gary\VeRSI\NeCTAR_AS_SXR_tool\SinSPECt\fixes.py"; DestDir: "{app}"; Flags: ignoreversion
-Source: "C:\Users\gary\VeRSI\NeCTAR_AS_SXR_tool\SinSPECt\specs.py"; DestDir: "{app}"; Flags: ignoreversion
-Source: "C:\Users\gary\VeRSI\NeCTAR_AS_SXR_tool\SinSPECt\start_sinspect.sh"; DestDir: "{app}"; Flags: ignoreversion
-Source: "C:\Users\gary\VeRSI\NeCTAR_AS_SXR_tool\SinSPECt\resources\app_icon.ico"; DestDir: "{app}\resources"; Flags: ignoreversion
+Source: "C:\Users\gary\VeRSI\NeCTAR_AS_SXR_tool\SinSPECt\*.py"; Excludes: "*.pyc"; DestDir: "{app}"; Flags: ignoreversion
+Source: "C:\Users\gary\VeRSI\NeCTAR_AS_SXR_tool\SinSPECt\tests\*"; Excludes: "*.pyc"; DestDir: "{app}\tests"; Flags: "ignoreversion recursesubdirs"
+Source: "C:\Users\gary\VeRSI\NeCTAR_AS_SXR_tool\SinSPECt\resources\*"; DestDir: "{app}\resources"; Flags: "ignoreversion recursesubdirs"
+; Source: "C:\Users\gary\VeRSI\NeCTAR_AS_SXR_tool\SinSPECt\docs\*"; DestDir: "{app}\docs"; Flags: "ignoreversion recursesubdirs"
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
 [Icons]
