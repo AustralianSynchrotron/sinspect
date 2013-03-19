@@ -28,7 +28,7 @@ __author__ = "Gary Ruben"
 __copyright__ = "Copyright (c) 2013, Synchrotron Light Source Australia Pty Ltd"
 __credits__ = ["Kane O'Donnell"]    # Thanks to Kane for releasing the specs module under a Modified BSD license
 __license__ = "Modified BSD"
-__version__ = "0.2rc2"
+__version__ = "0.3"
 __maintainer__ = "Gary Ruben"
 __email__ = "gruben@versi.edu.au"
 
@@ -1174,7 +1174,7 @@ class SelectorPanel(HasTraits):
                 group = HGroup()
                 group.content = [UItem('dbl_norm_ref_numerator', width=-50),
                                  UItem('text_divider', style='readonly'),
-                                 UItem('dbl_norm_ref', width=-42),
+                                 UItem('dbl_norm_ref', width=-50),
                                 ]
                 group.show_border = True
                 group.label = 'Dbl nrm ref'
@@ -1515,13 +1515,17 @@ class HelpBox(HasTraits):
     Software source: <br>
     <a href="http://github.com/AustralianSynchrotron/sinspect">http://github.com/AustralianSynchrotron/sinspect</a> <br>
     
+    <h3>Credits</h3>
     Recognition of NeCTAR funding: <br>
     The Australian Synchrotron is proud to be in partnership with the National eResearch
     Collaboration Tools and Resources (NeCTAR) project to develop eResearch Tools for the
     synchrotron research community. This will enable our scientific users to have instant
     access to the results of data during the course of their experiment which will
     facilitate better decision making and also provide the opportunity for ongoing data
-    analysis via remote access.
+    analysis via remote access. <br>
+    
+    Some icons in this software are from the FatCow free icon set at http://www.fatcow.com/free-icons,
+    used under a Creative Commons Attribution license: http://creativecommons.org/licenses/by/3.0
     
     {__copyright__} <br>
     All rights reserved.
