@@ -31,8 +31,9 @@ To run, just call python on app.py
 
 Version History
 ---------------
-0.3     This version
-        Tagged for release to wider userbase
+0.4     This version
+        Skip XPS regions when set to double-normalisation
+0.3     Tagged for release to wider userbase
 0.2rc2  Tagged version for evaluation by local users
 0.2rc1  Tagged version for evaluation by local users
 0.1     Initial tagged release for evaluation by beamline scientists

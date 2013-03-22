@@ -28,7 +28,7 @@ __author__ = "Gary Ruben"
 __copyright__ = "Copyright (c) 2013, Synchrotron Light Source Australia Pty Ltd"
 __credits__ = ["Kane O'Donnell"]    # Thanks to Kane for releasing the specs module under a Modified BSD license
 __license__ = "Modified BSD"
-__version__ = "0.3"
+__version__ = "0.4"
 __maintainer__ = "Gary Ruben"
 __email__ = "gruben@versi.edu.au"
 
@@ -368,15 +368,15 @@ class TreePanel(HasTraits):
         '''
         mode = self.get_normalisation_mode()
         if mode == 'self':
-            if (get_name_body(series_name)!='extended_channels') or \
-               (get_name_num(series_name)!=tree_panel.extended_channel_ref):
+            if (get_name_body(series_name) != 'extended_channels') or \
+               (get_name_num(series_name) != tree_panel.extended_channel_ref):
                 ys = region.normalise_self(ys)
-        elif mode == 'double':
+        elif (mode == 'double') and (region.region.scan_mode == 'ConstantFinalState'):
             if series_name=='counts':
                 ys = region.double_normalise_counts()
             else:
-                if (get_name_body(series_name)!='extended_channels') or \
-                   (get_name_num(series_name)!=region.selection.dbl_norm_ref):
+                if (get_name_body(series_name) != 'extended_channels') or \
+                   (get_name_num(series_name) != region.selection.dbl_norm_ref):
                     ys = region.double_normalise_channel(series_name)
         return ys
 
@@ -426,6 +426,10 @@ class TreePanel(HasTraits):
             # First header line
             h += '#"'
             mode = self.get_normalisation_mode()
+            # Now we have the normalisation mode according to the GUI setting. Override
+            # this if it says double-normalisation and the axis type does not support this
+            if mode == 'double' and r.region.scan_mode != 'ConstantFinalState':
+                mode = 'none'
             if mode == 'self':
                 h += 'Normalised to extended channel {}, '\
                     .format(normalisation_ref)
@@ -1114,6 +1118,12 @@ class SelectorPanel(HasTraits):
         '''
         return tree_panel._norm_reference_set() and (self.region is tree_panel.norm_ref)
 
+    def _is_cfs_spectrum(self):
+        ''' Returns True iff the currently selected region is a region with the x-axis type
+        equal to ConstantFinalState.
+        '''
+        return self.region.region.scan_mode == 'ConstantFinalState'
+
     def default_traits_view(self):
         '''
         Called to create the selection view to be shown in the selection panel.
@@ -1188,7 +1198,8 @@ class SelectorPanel(HasTraits):
                 group.content = [UItem('dbl_norm_ref', width=-70)]
                 group.show_border = True
                 group.label = 'Dbl nrm ref'
-                group.visible_when = 'object._norm_reference_set() and not object._is_norm_reference()'
+                group.visible_when = 'object._norm_reference_set() and not \
+                    object._is_norm_reference() and object._is_cfs_spectrum()'
                 group1.content.append(group)
 
             group1.label = self.region.name
