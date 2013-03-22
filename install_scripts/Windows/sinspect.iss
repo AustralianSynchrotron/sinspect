@@ -3,6 +3,8 @@
 
 #define MyAppName "SinSPECt"
 #define MyAppExeName "start_sinspect.bat"
+;#define Home "C:\Users\gary\VeRSI\NeCTAR_AS_SXR_tool\SinSPECt"
+#define Home "..\.."
 
 [Setup]
 ; NOTE: The value of AppId uniquely identifies this application.
@@ -19,9 +21,9 @@ AppUpdatesURL=http://www.synchrotron.org.au/sinspect
 DefaultDirName={pf}\SinSPECt
 DefaultGroupName=SinSPECt
 AllowNoIcons=true
-LicenseFile=C:\Users\gary\VeRSI\NeCTAR_AS_SXR_tool\SinSPECt\LICENSE
+LicenseFile={#Home}\LICENSE
 OutputBaseFilename=setup_sinspect
-SetupIconFile=C:\Users\gary\VeRSI\NeCTAR_AS_SXR_tool\SinSPECt\resources\app_icon.ico
+SetupIconFile={#Home}\resources\app_icon.ico
 UninstallDisplayIcon={uninstallexe}
 Compression=lzma/Max
 SolidCompression=yes
@@ -34,13 +36,13 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Name: "quicklaunchicon"; Description: "{cm:CreateQuickLaunchIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked; OnlyBelowVersion: 0,6.1
 
 [Files]
-Source: "C:\Users\gary\VeRSI\NeCTAR_AS_SXR_tool\SinSPECt\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "C:\Users\gary\VeRSI\NeCTAR_AS_SXR_tool\SinSPECt\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
-Source: "C:\Users\gary\VeRSI\NeCTAR_AS_SXR_tool\SinSPECt\README.rst"; DestDir: "{app}"; Flags: ignoreversion
-Source: "C:\Users\gary\VeRSI\NeCTAR_AS_SXR_tool\SinSPECt\*.py"; Excludes: "*.pyc"; DestDir: "{app}"; Flags: ignoreversion
-Source: "C:\Users\gary\VeRSI\NeCTAR_AS_SXR_tool\SinSPECt\tests\*"; Excludes: "*.pyc"; DestDir: "{app}\tests"; Flags: "ignoreversion recursesubdirs"
-Source: "C:\Users\gary\VeRSI\NeCTAR_AS_SXR_tool\SinSPECt\resources\*"; DestDir: "{app}\resources"; Flags: "ignoreversion recursesubdirs"
-; Source: "C:\Users\gary\VeRSI\NeCTAR_AS_SXR_tool\SinSPECt\docs\*"; DestDir: "{app}\docs"; Flags: "ignoreversion recursesubdirs"
+Source: "{#Home}\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#Home}\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#Home}\README.rst"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#Home}\*.py"; Excludes: "*.pyc"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#Home}\tests\*"; Excludes: "*.pyc"; DestDir: "{app}\tests"; Flags: "ignoreversion recursesubdirs"
+Source: "{#Home}\resources\*"; DestDir: "{app}\resources"; Flags: "ignoreversion recursesubdirs"
+; Source: "{#Home}\docs\*"; DestDir: "{app}\docs"; Flags: "ignoreversion recursesubdirs"
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
 [Icons]
