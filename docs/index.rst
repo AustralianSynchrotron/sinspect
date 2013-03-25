@@ -6,7 +6,22 @@
 Welcome to SinSPECt's documentation!
 ====================================
 
-Contents:
+SinSPECt [#sinspect_url]_ (Soft x-ray spectrum inSPECTor)
+is a data explorer for Soft X-Ray spectroscopy data stored in the SPECS XML format.
+
+- Reads SPECS XML format files saved from SpecsLab2.
+- Graphical exploration of data regions.
+- Exports columnar ASCII with choice of delimiter and optional headers.
+- Supports normalisation of data to internally available data channels.
+- Cross-platform. Runs on Windows/Mac OSX/Linux
+- Released under the Modified BSD-license
+
+.. image:: images/SinSPECt_screenshot_2013-03-25_101225.png
+   :scale: 60 %
+   :alt: SinSPECt screenshot
+
+Contents
+--------
 
 .. toctree::
    :maxdepth: 2

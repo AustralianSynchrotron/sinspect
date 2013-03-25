@@ -6,36 +6,50 @@
 Usage
 *****
 
-SinSPECt is a tool for browsing SpecsLab2 SPECS .xml files for reviewing and exporting captured data.
+This page describes the usage of SinSPECt.
 
 Exported data
 =============
 Regions selected for export are saved as .xy files.
 .xy files are ASCII files containing two optional header lines followed by columnar numerical data. Fields are TAB separated by default, allowing the file to be imported into MS Excel easily, e.g. by drag-and-drop.
-Both header lines start with the # comment character. The first line contains text representations of some region-specific metadata fields and indicates whether the data is single- or double-normalised, as described below. An example is
+Both header lines start with the # comment character. The first line contains text representations of some region-specific metadata fields and indicates whether the data is single- or double-normalised, as described below. An example is::
 
  #"Analyzer mode:FixedAnalyzerTransmission, Dwell time:0.1, Pass energy:5.0, Lens mode:MediumArea:1.5kV, Excitation energy:700.0"
 
-The second line contains column headings for the numeric data. An example is
+The second line contains column headings for the numeric data. An example is::
 
- #"Binding Axis"	"Counts 1+2+3+4+5+6+7+8+9"	"Channel 1 counts"	"Channel 2 counts"	"Channel 3 counts"	"Channel 4 counts"	"Channel 5 counts"	"Channel 6 counts"	"Channel 7 counts"	"Channel 8 counts"	"Channel 9 counts"	"Extended channel 1"	"Extended channel 2"	"Extended channel 3"	"Extended channel 4"	"Extended channel 5"	"Extended channel 6"	"Extended channel 7"	"Extended channel 8"	"Extended channel 9"
+ #"Binding Axis" "Counts 1+2+3+4+5+6+7+8+9" "Channel 1 counts" "Channel 2 counts" "Channel 3 counts" "Channel 4 counts" "Channel 5 counts" "Channel 6 counts" "Channel 7 counts" "Channel 8 counts" "Channel 9 counts" "Extended channel 1" "Extended channel 2" "Extended channel 3" "Extended channel 4" "Extended channel 5" "Extended channel 6" "Extended channel 7" "Extended channel 8" "Extended channel 9"
 
-An example of a row of numeric data is
+An example of a row of numeric data is::
 
- 110	711	116	91	157	36	74	85	102	41	9	0	21298	75412	0	11253	0	0	56360	0
+ 110 711 116 91 157 36 74 85 102 41 9 0 21298 75412 0 11253 0 0 56360 0
 
-which contains the following from left-to-right: x-value, counts, 9-channeltron-channels, 9-extended-channels. Sometime, regions in the .xml file may contain no channel data or no extended channel data. In these cases, the data is zero-filled with the correct number of entries to match the number of x-values. By default, exported region data reflects the value read from the .xml file exactly. The counts value is determined by summing those channeltron channels with corresponding checked checkboxes. Unchecking a checkbox removes that channel from the sum. The contributing channels are reflected by the header of second column; e.g., "Counts 1+2+3+4+5+6+7+8+9" above indicates all channels were summed to get the values in this column. Data may also be normalised as described below under normalisation and double normalisation.
+which contains the following from left-to-right: x-value, counts, 9-channeltron-channels, 9-extended-channels. Occasionally regions in the .xml file may contain no channel data or no extended channel data. In these cases, the data is zero-filled with the correct number of entries to match the number of x-values. By default, exported region data reflects the value read from the .xml file exactly. The counts value is determined by summing those channeltron channels with corresponding checked checkboxes. Unchecking a checkbox removes that channel from the sum. The contributing channels are reflected by the header of second column; e.g., "Counts 1+2+3+4+5+6+7+8+9" above indicates all channels were summed to get the values in this column. Data may also be normalised as described below under normalisation and double normalisation.
+
+Data normalisation
+==================
+SinSPECt operates in one of three modes: 1. No processing, 2. Single normalisation, 3. Double normalisation.
+
+No processing
+-------------
+In this mode all displayed plots and exported data correspond to the raw channeltron and extended-channel data.
+
+.. note:: Enabling No processing mode
+
+    This mode is enabled when the drop-down selector in the "Normalisation by chosen I0" GUI group is disabled or set to "None" and when the double-normalisation mode is disabled, indicated by the toolbar 'X' button being greyed-out.
 
 Single Normalisation
-====================
-Two types of normalisation are supported. Here we discuss single-normalisation.
+--------------------
+In Single-normalisation mode, all displayed and exported data is divided by the data in the selected extended channel :math:`\textbf{e}_r` (the data in the selected extended channel is left unnormalised).
 
-enabling
---------
-The Normalisation GUI group contains a drop-down selector labelled "ref:" which, when enabled, selects the extended channel that all y-data values will be divided by. The selector is enabled whenever an .xml SPECS data file is loaded and whenever the double-normalisation mode is not enabled. If the selector is set to "None", normalisation (aka single-normalisation) is disabled. If the selector is set to a value 1-9, normalisation is enabled.
+.. note:: Enabling Single Normalisation mode
 
-processing
-----------
+    The "Normalisation by chosen I0" GUI group contains a drop-down selector labelled "ref:" which selects the extended channel that all y-data values will be divided by. The selector is enabled whenever an .xml SPECS data file is loaded and whenever the double-normalisation mode is not enabled. If the selector is set to "None", all normalisation is disabled: plots and exported data will correspond to the raw data. If the selector is set to a value 1-9, normalisation is enabled.
+
+.. warning::
+
+    It is possible to set the reference channel :math:`\textbf{e}_r` to an extended channel that may contain zeros in some regions, resulting in divide-by-zero errors. In this case, the plot window will be blank and errors will be produced for exported regions that cause errors. If any errors occurred during export, a notification is displayed, the filenames of affected .xy data files are prepended with the text *ERRORS_*, and a header line indicating the error is written to the file.
+
 During preview and export, data is processed as follows.
 
 .. math:: \textbf{C} = \sum_i a_i\textbf{c}_i,
@@ -61,23 +75,23 @@ Here, the condition :math:`i \ne r` shows that we choose not to normalise the re
 
 This enables the normalisation procedure to be undone if desired, with access to only the exported data file.
 
+
 Double Normalisation
-====================
+--------------------
+In Double-normalisation mode, all displayed and exported data is divided first by the extended channel specified for that region then further by the ratio of the two channels specified in a reference region (the data in the selected extended channel is left unnormalised).
 
-purpose
--------
-The purpose of double-normalisation is ... (say something about why it's needed).
+.. note:: Enabling Double Normalisation mode
 
-enabling
---------
-The Normalisation GUI group contains a label Region: with the hint "(Set from right-click menu)". Double-normalisation is enabled by setting a reference region :math:`R` by right-clicking on a region in the tree editor and selecting "Set normalisation region". The Region: label then indicates the reference region and a [Clear] button appears, enabling the region to be cleared and double-normalisation to be disabled.
+    Clicking the toolbar bookmark icon enables double normalisation and sets the currently selected region as the reference region :math:`R` . The text *(ref)* appears in the label alongside the reference region in the tree editor to indicate this. Clicking the 'X' button adjacent to the bookmark clears double normalisation mode.
+    When double normalisation is enabled, drop-down selectors appear to the right of the selection panel checkboxes. These enable setting of the extended channels used to compute the double-normalised results.
+    For all regions other than the reference region, the group contains one drop-down selector. This allows selection of the extended channel :math:`\textbf{e}_r` (see description below).
+    For the reference region, the selector panel contains two drop-down selectors that allow setting of the values :math:`s` and :math:`\textbf{e}^R_r` (see description below).
 
-When enabled, the drop-down ref: selector in the Normalisation GUI group is disabled and a new GUI group "Dbl nrm ref" is enabled in the Selector panel next to the Extended Channels group. This group contains one or two drop-down selectors that enable setting of the extended channels. The group contains one drop-down selector for all regions other than the reference region. This allows selection of the extended channel :math:`\textbf{e}_r` described below.
+.. warning::
 
-For the reference region, the selector panel contains two drop-down selectors that allow setting of the values :math:`s` and :math:`\textbf{e}^R_r` described below.
+    It is possible to set the reference extended channel in the current reion :math:`\textbf{e}_r` or that of the reference region :math:`\textbf{e}^R_r` to a channel that may contain zeros in some regions, or whose x-axis ranges differ. In both cases, the plot window will be blank and errors will be produced for exported regions that cause these error types. If any errors occurred during export, a notification is displayed, the filenames of affected .xy data files are prepended with the text *ERRORS_*, and a header line indicating the error is written to the file.
 
-processing
-----------
+
 During preview and export, the double normalised Counts :math:`\textbf{C}''` is
 
 .. math:: \textbf{C}'' = \sum_i a_i\textbf{c}_i/\textbf{e}_r/(M^R/\textbf{e}^R_r),
@@ -100,4 +114,8 @@ and
 
 .. math:: \textbf{e}''_i = \textbf{e}_i/\textbf{e}_r/(M^R/\textbf{e}^R_r).
 
-Unlike the single normalisation case, we do not bother to distinguish the case where :math:`i=r` since the exported file would not contain all the required data to undo the double normalisation procedure.
+As for the single normalisation case, we choose not to normalise the reference extended counts channel data to be identically 1, i.e. the exported values are simply
+
+.. math:: \textbf{e}''_i = \textbf{e}_i, i = r.
+
+In order to enable the normalisation procedure to be undone if desired, a column is appended that contains the :math:`M^R/\textbf{e}^R_r` values, allowing reversal of the processing with access to only the exported data file.
