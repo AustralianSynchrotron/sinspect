@@ -8,114 +8,62 @@ Usage
 
 This page describes the usage of SinSPECt.
 
-Exported data
-=============
-Regions selected for export are saved as .xy files.
-.xy files are ASCII files containing two optional header lines followed by columnar numerical data. Fields are TAB separated by default, allowing the file to be imported into MS Excel easily, e.g. by drag-and-drop.
-Both header lines start with the # comment character. The first line contains text representations of some region-specific metadata fields and indicates whether the data is single- or double-normalised, as described below. An example is::
+Introduction
+============
 
- #"Analyzer mode:FixedAnalyzerTransmission, Dwell time:0.1, Pass energy:5.0, Lens mode:MediumArea:1.5kV, Excitation energy:700.0"
+The SinSPECt window starts with two main areas, divided by a movable vertical splitter bar.
+After loading a file and selecting a region, the window should look similar to that in the figure.
 
-The second line contains column headings for the numeric data. An example is::
+.. figure:: images/SinSPECt_ident.png
+   :scale: 60 %
+   :alt: SinSPECt GUI areas
 
- #"Binding Axis" "Counts 1+2+3+4+5+6+7+8+9" "Channel 1 counts" "Channel 2 counts" "Channel 3 counts" "Channel 4 counts" "Channel 5 counts" "Channel 6 counts" "Channel 7 counts" "Channel 8 counts" "Channel 9 counts" "Extended channel 1" "Extended channel 2" "Extended channel 3" "Extended channel 4" "Extended channel 5" "Extended channel 6" "Extended channel 7" "Extended channel 8" "Extended channel 9"
+   SinSPECt screenshot (Windows version) identifying parts of the user interface.
 
-An example of a row of numeric data is::
+The parts of the user interface are:
+1. Toolbar
+2. Single normalisation extended channel choice
+3. Exported ASCII file format settings
+4. Tree editor reflecting SPECS .xml file structure
+5. Region selector panel
+6. Region plot window
+7. Counts (export region) checkbox
+8. Channeltron channel checkboxes
+9. Extended channel checkboxes
 
- 110 711 116 91 157 36 74 85 102 41 9 0 21298 75412 0 11253 0 0 56360 0
+1. Toolbar.
+    From left-to-right, the toolbar buttons allow you to 1a) Open a SPECS file, 1b) Export all regions marked for export, 1c) Set the region currently selected in the tree editor as the double-normalisation reference, 1d) Clear any double-normalisation reference and disable double-normalisation, 1e) Copy the Checkbox states of the currently selected region to a clipboard, 1f) Paste the clipboard state to the current tree editor selection.
 
-which contains the following from left-to-right: x-value, counts, 9-channeltron-channels, 9-extended-channels. Occasionally regions in the .xml file may contain no channel data or no extended channel data. In these cases, the data is zero-filled with the correct number of entries to match the number of x-values. By default, exported region data reflects the value read from the .xml file exactly. The counts value is determined by summing those channeltron channels with corresponding checked checkboxes. Unchecking a checkbox removes that channel from the sum. The contributing channels are reflected by the header of second column; e.g., "Counts 1+2+3+4+5+6+7+8+9" above indicates all channels were summed to get the values in this column. Data may also be normalised as described below under normalisation and double normalisation.
+    1a) Open SPECS file.
 
-Data normalisation
-==================
-SinSPECt operates in one of three modes: 1. No processing, 2. Single normalisation, 3. Double normalisation.
+    SPECS files are organised into a 2-level hierarchy, with the possibility of multiple Groups and the possibility of multiple Regions within each group.
 
-No processing
--------------
-In this mode all displayed plots and exported data correspond to the raw channeltron and extended-channel data.
+    .. note:: Name mangling on import
 
-.. note:: Enabling No processing mode
+        SPECS files can potentially contain many Groups with duplicated identical naming. Within these, Regions could also be named identically. To avoid any problems that this would cause, SinSPECt alters the names to ensure uniqueness by appending sequential numbers to any duplicate. e.g. If a group contained several regions named 'a', 'b', 'c', 'a', 'b', 'a', SinSPECt would change these to 'a', 'b', 'c', 'a-1', 'b-1', 'a-2' and write files named 'a.xy', 'b.xy', 'c.xy', 'a-1.xy', 'b-1.xy', 'a-2.xy'.
 
-    This mode is enabled when the drop-down selector in the "Normalisation by chosen I0" GUI group is disabled or set to "None" and when the double-normalisation mode is disabled, indicated by the toolbar 'X' button being greyed-out.
+    1b) Export marked regions.
 
-Single Normalisation
---------------------
-In Single-normalisation mode, all displayed and exported data is divided by the data in the selected extended channel :math:`\textbf{e}_r` (the data in the selected extended channel is left unnormalised).
+    SinSPECt exports .xy files as columnar ASCII in files with names matching the Region names.
+    The files are written into directories matching the Group names. Regions marked with a '*' or '+' will be exported. These correspond to those Regions whose Counts checkbox (box 7 in the figure) is checked. Initially, all regions are set to be exported, as indicated by a '*' marker.
 
-.. note:: Enabling Single Normalisation mode
+    .. note:: A + marker indicates that the displayed and exported Counts column data is formed from a subset of the possible Channeltron Channel Counts summands. Only if all checkboxes in box 8 in the figure are checked will this marker be a '*'.
 
-    The "Normalisation by chosen I0" GUI group contains a drop-down selector labelled "ref:" which selects the extended channel that all y-data values will be divided by. The selector is enabled whenever an .xml SPECS data file is loaded and whenever the double-normalisation mode is not enabled. If the selector is set to "None", all normalisation is disabled: plots and exported data will correspond to the raw data. If the selector is set to a value 1-9, normalisation is enabled.
+    1c) Set region as double normalisation reference.
 
-.. warning::
+    Clicking the bookmark toolbar button enables double normalisation and sets the currently selected region as the reference region, indicated by the text (ref) in the label alongside the reference region. When double normalisation is enabled, drop-down selectors appear to the right of the selection panel checkboxes. See the Double Normalisation section in :ref:`processing_root` for further details.
 
-    It is possible to set the reference channel :math:`\textbf{e}_r` to an extended channel that may contain zeros in some regions, resulting in divide-by-zero errors. In this case, the plot window will be blank and errors will be produced for exported regions that cause errors. If any errors occurred during export, a notification is displayed, the filenames of affected .xy data files are prepended with the text *ERRORS_*, and a header line indicating the error is written to the file.
+2. Single normalisation extended channel choice.
+    SinSPECt operates in one of three modes: 1. No processing, 2. Single normalisation, 3. Double normalisation. SinSPECt starts in the No processing mode, indicated by this selector being set to "None". Selecting any value other than None changes the operation mode to Single normalisation and establishes the Extended Channel corresponding to the displayed number as the Single normalisation reference. Setting this to "None" returns SinSPECt to the No processing mode. The selector is disabled when operating in Double normalisation mode.
 
-During preview and export, data is processed as follows.
+3. Exported ASCII file format settings.
+    SinSPECt exports .xy files as columnar ASCII. These settings allow header columns to be disabled and the delimiter to be set.
 
-.. math:: \textbf{C} = \sum_i a_i\textbf{c}_i,
+4. Tree editor reflecting SPECS .xml file structure.
+    When a SPECS file is loaded, its structure is reflected in the navigation tree structure displayed in this panel. Files may contain many Groups, each of which may contain many Regions.
 
-where :math:`\textbf{C}` is the Counts vector, :math:`i=1..9` is an index over the channels, :math:`\textbf{c}_i` is the vector of channel data, :math:`a_i` is 1 if the :math:`i` th channel is enabled or 0 otherwise.
-The channels :math:`\textbf{c}_i` and extended channels :math:`\textbf{e}_i` are those values read from the .xml SPECS file.
-The normalised Counts :math:`\textbf{C}'` are then
+5. Region selector panel.
+    This panel contains any Region-related settings. Its state updates according to the Region selected in the tree editor.
 
-.. math:: \textbf{C}' = \textbf{C}/\textbf{e}_r,
- 
-where :math:`\textbf{e}_r` is the specified reference extended channel.
-In addition to the Counts, the single-normalised channel counts :math:`\textbf{c}'_i` and extended channel counts :math:`\textbf{e}'_i` are determined according to
-
-.. math:: \textbf{c}'_i = \textbf{c}_i/\textbf{e}_r,
-
-and
-
-.. math:: \textbf{e}'_i = \textbf{e}_i/\textbf{e}_r, i \ne r.
-
-Here, the condition :math:`i \ne r` shows that we choose not to normalise the reference extended counts channel data to be identically 1, i.e. the exported values are simply
-
-.. math:: \textbf{e}'_i = \textbf{e}_i, i = r.
-
-This enables the normalisation procedure to be undone if desired, with access to only the exported data file.
-
-
-Double Normalisation
---------------------
-In Double-normalisation mode, all displayed and exported data is divided first by the extended channel specified for that region then further by the ratio of the two channels specified in a reference region (the data in the selected extended channel is left unnormalised).
-
-.. note:: Enabling Double Normalisation mode
-
-    Clicking the toolbar bookmark icon enables double normalisation and sets the currently selected region as the reference region :math:`R` . The text *(ref)* appears in the label alongside the reference region in the tree editor to indicate this. Clicking the 'X' button adjacent to the bookmark clears double normalisation mode.
-    When double normalisation is enabled, drop-down selectors appear to the right of the selection panel checkboxes. These enable setting of the extended channels used to compute the double-normalised results.
-    For all regions other than the reference region, the group contains one drop-down selector. This allows selection of the extended channel :math:`\textbf{e}_r` (see description below).
-    For the reference region, the selector panel contains two drop-down selectors that allow setting of the values :math:`s` and :math:`\textbf{e}^R_r` (see description below).
-
-.. warning::
-
-    It is possible to set the reference extended channel in the current reion :math:`\textbf{e}_r` or that of the reference region :math:`\textbf{e}^R_r` to a channel that may contain zeros in some regions, or whose x-axis ranges differ. In both cases, the plot window will be blank and errors will be produced for exported regions that cause these error types. If any errors occurred during export, a notification is displayed, the filenames of affected .xy data files are prepended with the text *ERRORS_*, and a header line indicating the error is written to the file.
-
-
-During preview and export, the double normalised Counts :math:`\textbf{C}''` is
-
-.. math:: \textbf{C}'' = \sum_i a_i\textbf{c}_i/\textbf{e}_r/(M^R/\textbf{e}^R_r),
-
-where :math:`M^R` depends on the drop-down menu selection :math:`s \in \{ \text{Counts}, 1..9 \}` as follows.
-
-.. math:: M^R = \textbf{e}^R_s, \text{ if } s \in 1..9,
-
-or, if :math:`s=\text{Counts}`
-
-.. math:: M^R = \textbf{C}^R = \sum_i a^R_i\textbf{c}^R_i, \text{ if } s=\text{Counts}.
-
-Here :math:`\textbf{e}_r` is the reference extended channel in the current region,
-:math:`\textbf{e}^R_r` is the reference extended channel in the reference region :math:`R`.
-In addition to the Counts, the double-normalised channel counts :math:`\textbf{c}''_i` and extended channel counts :math:`\textbf{e}''_i` are determined according to
-
-.. math:: \textbf{c}''_i = \textbf{c}_i/\textbf{e}_r/(M^R/\textbf{e}^R_r)
-
-and
-
-.. math:: \textbf{e}''_i = \textbf{e}_i/\textbf{e}_r/(M^R/\textbf{e}^R_r).
-
-As for the single normalisation case, we choose not to normalise the reference extended counts channel data to be identically 1, i.e. the exported values are simply
-
-.. math:: \textbf{e}''_i = \textbf{e}_i, i = r.
-
-In order to enable the normalisation procedure to be undone if desired, a column is appended that contains the :math:`M^R/\textbf{e}^R_r` values, allowing reversal of the processing with access to only the exported data file.
+6. to 9. Region plot window and Region selector panel checkboxes.
+    The plot window contains plots corresponding to the checkbox states in the Region selector panel. Channeltron Channel Counts are shown in blue, their Counts sum is shown in black, and Extended Channels are shown in red. Plots are normalised according to the description in the :ref:`processing_root` section. See above note in (1b). The Channel Counts (box 8) and Extended Channels (box 9) checkbox groups also contain buttons that allow quick checking and unchecking of all checkboxes within the checkbox group.
