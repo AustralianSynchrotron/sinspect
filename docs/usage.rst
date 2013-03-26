@@ -8,9 +8,6 @@ Usage
 
 This page describes the usage of SinSPECt.
 
-Introduction
-============
-
 The SinSPECt window starts with two main areas, divided by a movable vertical splitter bar.
 After loading a file and selecting a region, the window should look similar to that in the figure.
 
@@ -47,7 +44,7 @@ The parts of the user interface are:
     SinSPECt exports .xy files as columnar ASCII in files with names matching the Region names.
     The files are written into directories matching the Group names. Regions marked with a '*' or '+' will be exported. These correspond to those Regions whose Counts checkbox (box 7 in the figure) is checked. Initially, all regions are set to be exported, as indicated by a '*' marker.
 
-    .. note:: A + marker indicates that the displayed and exported Counts column data is formed from a subset of the possible Channeltron Channel Counts summands. Only if all checkboxes in box 8 in the figure are checked will this marker be a '*'.
+    .. note:: A '+' marker indicates that the displayed and exported Counts column data is formed from a subset of the possible Channeltron Channel Counts summands. Only if all checkboxes in box 8 in the figure are checked will this marker be a '*'.
 
     1c) Set region as double normalisation reference.
 
@@ -60,10 +57,10 @@ The parts of the user interface are:
     SinSPECt exports .xy files as columnar ASCII. These settings allow header columns to be disabled and the delimiter to be set.
 
 4. Tree editor reflecting SPECS .xml file structure.
-    When a SPECS file is loaded, its structure is reflected in the navigation tree structure displayed in this panel. Files may contain many Groups, each of which may contain many Regions.
+    When a SPECS file is loaded, its structure is reflected in the navigation tree structure displayed in this panel. Files may contain many Groups, each of which may contain many Regions. Mouse and keyboard actions applying to tree editor selections are described in the menu item :menuselection:`Help --> About...` window.
 
 5. Region selector panel.
     This panel contains any Region-related settings. Its state updates according to the Region selected in the tree editor.
 
 6. to 9. Region plot window and Region selector panel checkboxes.
-    The plot window contains plots corresponding to the checkbox states in the Region selector panel. Channeltron Channel Counts are shown in blue, their Counts sum is shown in black, and Extended Channels are shown in red. Plots are normalised according to the description in the :ref:`processing_root` section. See above note in (1b). The Channel Counts (box 8) and Extended Channels (box 9) checkbox groups also contain buttons that allow quick checking and unchecking of all checkboxes within the checkbox group.
+    The plot window contains plots corresponding to the checkbox states in the Region selector panel. The mouse allows zooming and panning in this panel (described in the menu item :menuselection:`Help --> About...` window). Channeltron Channel Counts are shown in blue, their Counts sum is shown in black, and Extended Channels are shown in red. Plots are normalised according to the description in the :ref:`processing_root` section. See above note in (1b). The Channel Counts (box 8) and Extended Channels (box 9) checkbox groups also contain buttons that allow quick checking and unchecking of all checkboxes within the checkbox group.
