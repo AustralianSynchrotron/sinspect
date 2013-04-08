@@ -60,6 +60,7 @@
 ################################################################################
 
 from __future__ import division
+import xml.etree.ElementTree        # required by py2exe
 import xml.etree.cElementTree as ET
 from numpy import array, linspace, arange, zeros, ceil, amax, amin, argmax, argmin, abs
 from numpy import polyfit, polyval, seterr, trunc, mean
