@@ -29,7 +29,7 @@ os.environ["PATH"] = \
 includes = []
 includes.append('numpy')
 includes.append('numpy.core')
-includes.append('scipy')
+# includes.append('scipy')
  
 includes.append('wx')
 includes.append('wx.*')
@@ -65,25 +65,25 @@ includes.append('enable.tools')
 includes.append('enable.wx')
 includes.append('enable.wx.*')
  
-includes.append('enable.savage')
-includes.append('enable.savage.*')
-includes.append('enable.savage.svg')
-includes.append('enable.savage.svg.*')
-includes.append('enable.savage.svg.backends')
-includes.append('enable.savage.svg.backends.wx')
-includes.append('enable.savage.svg.backends.wx.*')
-includes.append('enable.savage.svg.css')
-includes.append('enable.savage.compliance')
-includes.append('enable.savage.trait_defs')
-includes.append('enable.savage.trait_defs.*')
-includes.append('enable.savage.trait_defs.ui')
-includes.append('enable.savage.trait_defs.ui.*')
-includes.append('enable.savage.trait_defs.ui.wx')
-includes.append('enable.savage.trait_defs.ui.wx.*')
+# includes.append('enable.savage')
+# includes.append('enable.savage.*')
+# includes.append('enable.savage.svg')
+# includes.append('enable.savage.svg.*')
+# includes.append('enable.savage.svg.backends')
+# includes.append('enable.savage.svg.backends.wx')
+# includes.append('enable.savage.svg.backends.wx.*')
+# includes.append('enable.savage.svg.css')
+# includes.append('enable.savage.compliance')
+# includes.append('enable.savage.trait_defs')
+# includes.append('enable.savage.trait_defs.*')
+# includes.append('enable.savage.trait_defs.ui')
+# includes.append('enable.savage.trait_defs.ui.*')
+# includes.append('enable.savage.trait_defs.ui.wx')
+# includes.append('enable.savage.trait_defs.ui.wx.*')
 
-includes.append('zmq.utils')
-includes.append('zmq.utils.jsonapi')
-includes.append('zmq.utils.strtypes')
+# includes.append('zmq.utils')
+# includes.append('zmq.utils.jsonapi')
+# includes.append('zmq.utils.strtypes')
 
 packages = []
  
@@ -96,18 +96,18 @@ data_folders.append( ( os.path.join(ETS_folder,r'enable\images'), r'enable\image
 data_folders.append( ( os.path.join(ETS_folder,r'pyface\images'), r'pyface\images' ) )
 data_folders.append( ( os.path.join(ETS_folder,r'pyface\dock\images'), r'pyface\dock\images' ) )
 data_folders.append( ( os.path.join(ETS_folder,r'pyface\ui\wx\images'), r'pyface\ui\wx\images' ) )
-data_folders.append( ( os.path.join(ETS_folder,r'pyface\ui\wx\grid\images'), r'pyface\ui\wx\grid\images' ) )
+# data_folders.append( ( os.path.join(ETS_folder,r'pyface\ui\wx\grid\images'), r'pyface\ui\wx\grid\images' ) )
 data_folders.append( ( os.path.join(ETS_folder,r'traitsui\wx\images'), r'traitsui\wx\images' ) )
 data_folders.append( ( os.path.join(ETS_folder,r'traitsui\image\library'), r'traitsui\image\library' ) )
-data_folders.append( ( os.path.join(ETS_folder,r'enable\savage\trait_defs\ui\wx\data'), r'enable\savage\trait_defs\ui\wx\data' ) )
-#~ data_folders.append( ( os.path.join(ETS_folder,r'enable\images'), r'enable\images' ) )
+# data_folders.append( ( os.path.join(ETS_folder,r'enable\savage\trait_defs\ui\wx\data'), r'enable\savage\trait_defs\ui\wx\data' ) )
 
 data_folders.append( ( r'resources', r'resources' ) )
 
-# Matplotlib
-import matplotlib as mpl
-data_files = mpl.get_py2exe_datafiles()
- 
+# Matplotlib - not using this
+# import matplotlib as mpl
+# data_files = mpl.get_py2exe_datafiles()
+data_files = []
+
 # Parsing folders and building the data_files table
 for folder, relative_path in data_folders:
     for file in os.listdir(folder):
@@ -128,7 +128,7 @@ setup(windows = ['app.py'],
                               "includes": includes,
                               "dll_excludes": ["MSVCP90.dll", "w9xpopen.exe"],
                               "dist_dir": 'dist',
-                              #~ "bundle_files":2,
+                              # "bundle_files":2,
                               "xref": False,
                               "skip_archive": True,
                               "ascii": False,
