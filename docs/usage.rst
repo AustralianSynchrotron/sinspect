@@ -46,6 +46,13 @@ The parts of the user interface are:
 
     .. note:: A '+' marker indicates that the displayed and exported Counts column data is formed from a subset of the possible Channeltron Channel Counts summands. Only if all checkboxes in box 8 in the figure are checked will this marker be a '*'.
 
+    .. warning:: Beware of a bug in the export dialog box which affects the MS Windows version.
+                 Clicking the "Export marked regions" toolbar button opens a file browser with a button allowing you to make a new folder.
+                 After creating a folder using this button, if you rename the folder to something other than the default name "New folder,"
+                 the folder is not selected correctly. The symptom of this bug is that the text field below the tree view is not updated to the new folder.
+                 You will need to click another folder in the tree view then click on the newly created folder to update the text field before clicking "OK" to
+                 export your data. 
+
     1c) Set region as double normalisation reference.
 
     Clicking the bookmark toolbar button enables double normalisation and sets the currently selected region as the reference region, indicated by the text (ref) in the label alongside the reference region. When double normalisation is enabled, drop-down selectors appear to the right of the selection panel checkboxes. See the Double Normalisation section in :ref:`processing_root` for further details.

@@ -26,6 +26,8 @@ An example of a row of numeric data is::
 
 which contains the following from left-to-right: x-value, counts, 9-channeltron-channels, 9-extended-channels. Occasionally regions in the .xml file may contain no channel data or no extended channel data. In these cases, the data is zero-filled with the correct number of entries to match the number of x-values. By default, exported region data reflects the value read from the .xml file exactly. The counts value is determined by summing those channeltron channels with corresponding checked checkboxes. Unchecking a checkbox removes that channel from the sum. The contributing channels are reflected by the header of second column; e.g., "Counts 1+2+3+4+5+6+7+8+9" above indicates all channels were summed to get the values in this column. Data may also be normalised as described below under normalisation and double normalisation.
 
+.. note:: SinSPECt exports raw Channeltron Channel Counts, not counts per second. If you want to convert to counts per second in your analysis, you will need to divide exported counts values by the Dwell time.
+
 Data normalisation
 ==================
 SinSPECt operates in one of three modes: 1. No processing, 2. Single normalisation, 3. Double normalisation.
