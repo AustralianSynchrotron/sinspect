@@ -24,8 +24,6 @@ import specs
 import wx
 from help import open_help_index
 
-exec(open('version.py').read())    # get __version__ variable
-
 __author__ = "Gary Ruben"
 __copyright__ = "Copyright (c) 2013, Synchrotron Light Source Australia Pty Ltd"
 __credits__ = ["Kane O'Donnell"]    # Thanks to Kane for releasing the specs module under a Modified BSD license
@@ -1606,6 +1604,8 @@ class MainApp(HasTraits):
 
 
 if __name__ == "__main__":
+    exec(open('version.py').read())    # get __version__ variable
+
     np.seterr(divide='ignore', invalid='ignore')
     tree_panel = TreePanel(specs_file=SpFile())
     selector_panel = SelectorPanel()

@@ -1,8 +1,7 @@
 -   Specify a new version tag
 -   Update README.rst Version History section to contain tag reference and list of important changes
 -   Verify that all Copyright messages in the LICENSE file and .py files have the current year
--   Update the documentation version by updating the 'version' and 'release' strings in docs/conf.py
-    Update __version__ string in app.py
+-   Update the version by updating version.py
     Final run of unit tests/nose tests
     Package versions on Windows and Mac:
         Windows (We use innotools for packaging)

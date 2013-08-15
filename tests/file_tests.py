@@ -1,7 +1,12 @@
+import os
+import sys
+
+PATH_HERE = os.path.abspath(os.path.dirname(__file__))
+sys.path = [os.path.join(PATH_HERE, '..')] + sys.path
+
 import unittest
 import nose
 from nose.tools import eq_, ok_
-import os
 from app import SpFile
 
 
@@ -49,4 +54,4 @@ class CorrectLoadingTest(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    nose.main()
+    nose.run(defaultTest=__name__)
