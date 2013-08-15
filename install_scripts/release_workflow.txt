@@ -5,7 +5,7 @@
     Final run of unit tests/nose tests
     Package versions on Windows and Mac:
         Windows (We use innotools for packaging)
-            Update install_scripts/sinspect.iss:
+            Update install_scripts/Windows/sinspect.iss:
                 Add any new source files to the [Files] section
                 Update AppVersion in the [Setup] section
             Compile the installer

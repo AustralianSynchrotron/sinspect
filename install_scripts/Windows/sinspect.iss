@@ -12,8 +12,8 @@
 ; (To generate a new GUID, click Tools | Generate GUID inside the IDE.)
 AppId={{18FE77C5-3895-43F5-A832-FD36D396F165}
 AppName=SinSPECt
-AppVersion=0.4
-;AppVerName=SinSPECt 0.4
+AppVersion=0.5
+;AppVerName=SinSPECt 0.5
 AppPublisher=Australian Synchrotron
 AppPublisherURL=http://www.synchrotron.org.au/sinspect
 AppSupportURL=http://www.synchrotron.org.au/sinspect
