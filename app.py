@@ -24,11 +24,12 @@ import specs
 import wx
 from help import open_help_index
 
+exec(open('version.py').read())    # get __version__ variable
+
 __author__ = "Gary Ruben"
 __copyright__ = "Copyright (c) 2013, Synchrotron Light Source Australia Pty Ltd"
 __credits__ = ["Kane O'Donnell"]    # Thanks to Kane for releasing the specs module under a Modified BSD license
 __license__ = "Modified BSD"
-__version__ = "0.4"
 __maintainer__ = "Gary Ruben"
 __email__ = "gruben@versi.edu.au"
 
@@ -329,6 +330,9 @@ class TreePanel(HasTraits):
         ''' Trait event handler
         When the file dialog box is closed with a file selection, open that file
         '''
+        # short-circuit any event caused by the exception handler (*) in this method
+        if self.file_path == '':
+            return
         plot_panel.remove_all_plots()
         self._clear_dbl_nrm_ref_label()
 
@@ -337,7 +341,14 @@ class TreePanel(HasTraits):
             GUI.set_busy()                      # set hourglass         @UndefinedVariable
             self.specs_file = SpFile().open(self.file_path)
         except:
-            pass
+            # throw up an error message dialog
+            error_dialog_message = 'Unexpected error reading file ' + self.file_path
+            error(None, error_dialog_message)
+
+            # (*) The following line DOES trigger a trait changed event causing this
+            # function to be reentered, but if we don't reset the file_path, another
+            # attempt to load the same file won't trigger a Trait change event
+            self.file_path = ''
         GUI.set_busy(False)                     # reset hourglass       @UndefinedVariable
 
     def _clear_dbl_nrm_ref_label(self):

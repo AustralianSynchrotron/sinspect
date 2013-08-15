@@ -145,9 +145,9 @@ class SPECSRegion(object):
                 array([int(x) for x in elem[0].text.split()]))
 
         # Scaling factors for the counts.
-        for elem in xmlregion.findall(".//sequence[@name='scaling_factors']"):
-            self.scaling_factors.append(
-                array([float(x) for x in elem[0].text.split()]))
+        # for elem in xmlregion.findall(".//sequence[@name='scaling_factors']"):
+        #     self.scaling_factors.append(
+        #         array([float(x) for x in elem[0].text.split()]))
 
         # Look for Extended Channels in a YCurveSeq set.
         for ycs in xmlregion.findall(".//sequence[@type_name='YCurveSeq']"):
