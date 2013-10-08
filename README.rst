@@ -31,8 +31,9 @@ To run, just call python on app.py
 
 Version History
 ---------------
-0.5     This version
-        Fixed file loading to allow no scaling factors in SPECS file
+0.6     This version
+        Allow reading of SPECSLab files containing Windows-cp1252 special characters
+0.5     Fixed file loading to allow no scaling factors in SPECS file
 0.4     Skip XPS regions when set to double-normalisation
 0.3     Tagged for release to wider userbase
 0.2rc2  Tagged version for evaluation by local users
